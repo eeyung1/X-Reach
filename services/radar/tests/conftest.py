@@ -1,0 +1,5 @@
+import sys
+from pathlib import Path
+
+PACKAGE_ROOT = Path(__file__).parents[1] / "src"
+sys.path.insert(0, str(PACKAGE_ROOT))
