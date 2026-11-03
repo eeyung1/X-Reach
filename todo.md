@@ -121,11 +121,23 @@ curl -f http://localhost:3000/
 # 1. Launch all services with hot builds and volume attachments
 docker compose up --build -d
 
+# Or use the convenience helper script:
+./scripts/start.sh up
+
 # 2. View streaming logs across services
 docker compose logs -f
+# Or: ./scripts/start.sh logs
 
-# 3. Stop services
+# 3. Gateway verification (Nginx on port 8080)
+curl -f http://localhost:8080/healthz
+curl -f http://localhost:8080/
+
+# 4. Run end-to-end smoke tests against the compose stack
+./scripts/e2e.sh
+
+# 5. Stop services
 docker compose down
+# Or: ./scripts/start.sh down
 ```
 
 ---
@@ -176,3 +188,4 @@ When cloning or pulling onto another computer:
 
 - **Model Cache Persistence**: The `/models` volume caches OpenCLIP weights (`hf-hub:laion/CLIP-ViT-B-32-laion2B-s34B-b79K`). Persisting this volume prevents redownloading (~600MB) on container restart.
 - **Unprivileged Runtime UID**: Both containers execute under non-root users (`uid=10001`). When bind-mounting host directories to `/data`, ensure permissions allow read/write by UID 10001 (`chmod 777 data` or `chown 10001:10001 data`).
+

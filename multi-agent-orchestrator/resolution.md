@@ -393,3 +393,30 @@ Append-only completed-work evidence.
 - GitHub Actions CI Run: 41674390970
 - CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone, API Tests [21/21 passed], Radar Tests [24/24 passed])
 - Integrated into main: commit via no-ff merge.
+
+## task-compose-e2e-stack — codex-b7e4-compose-e2e-20261103
+- Session: Codex-20261103-b7e4-20261103-6994a83e
+- State: COMPLETE
+- Validation: /usr/bin/git show --check --oneline HEAD
+- Evidence: 91dd37a feat: orchestrate X-Reach compose stack
+- Recorded UTC: 2026-11-03T16:36:42Z
+
+## task-compose-e2e-stack handoff evidence
+- Feature/session: task-compose-e2e-stack / Codex-20261103-b7e4-20261103-6994a83e.
+- Branch/worktree: agent/task-compose-e2e-stack at .agent-worktrees/task-compose-e2e-stack.
+- Commit: 91dd37a554a2f52b0ad9e2a5eb376a4dd3a32a68.
+- Files: docker-compose.yml; scripts/start.sh; scripts/e2e.sh; scripts/nginx.conf; scripts/README.md; tests/e2e/test_compose_stack.py.
+- Implementation: Compose API, standalone web, radar worker, and local Nginx gateway; keeps internal API ports private, routes REST and streaming requests, mounts model cache and offline capture data, adds startup/cleanup helpers and gateway/radar SSE E2E checks.
+- Validation passed: PyYAML compose structure/routing checks; `sh -n scripts/start.sh scripts/e2e.sh`; E2E Python AST syntax check; `git diff --check`; `git show --check --oneline HEAD`.
+- Acceptance validation not run: `docker compose config` (Docker is not installed); `python3 -m pytest tests/e2e/ -q` (pytest module is not installed).
+- Remaining gates: validate Compose interpolation and start order with Docker Compose; run E2E tests against the built stack and verify the gateway/SSE path.
+- Next action: Planner/Integrator publishes and validates the exact commit, then integrates after acceptance checks pass.
+
+### task-compose-e2e-stack integration evidence
+- Feature: task-compose-e2e-stack
+- Planner / Integrator: planner-agent-01
+- Remote Branch: origin/agent/task-compose-e2e-stack (HEAD 91dd37a554a2f52b0ad9e2a5eb376a4dd3a32a68)
+- GitHub Actions CI Run: 41676219606
+- CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone, API Tests, Radar Tests)
+- Integrated into main: commit via no-ff merge.
+- Milestone 4 Status: COMPLETE (All 4 features integrated into main).
