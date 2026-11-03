@@ -41,6 +41,7 @@ class ViralSeed:
     likes: int | None
     reposts: int | None
     quotes: int | None
+    semantic_id: tuple[int, ...] | None
     simclusters: tuple[str, ...]
     source_operation: str | None
     source: str
@@ -134,6 +135,7 @@ class SeedScout:
                 legacy.get("retweet_count", legacy.get("repost_count")), default=None
             ),
             quotes=_integer(legacy.get("quote_count"), default=None),
+            semantic_id=_semantic_id(tweet),
             simclusters=clusters,
             source_operation=document.operation,
             source=document.source,
@@ -233,8 +235,6 @@ def _simclusters(tweet: Mapping[str, Any]) -> tuple[str, ...]:
         "sim_clusters",
         "simcluster_id",
         "simcluster_ids",
-        "semantic_id",
-        "semantic_ids",
     }
     stack: list[Any] = [tweet]
     while stack:
@@ -248,6 +248,36 @@ def _simclusters(tweet: Mapping[str, Any]) -> tuple[str, ...]:
         elif isinstance(value, list):
             stack.extend(value)
     return tuple(sorted(labels, key=str.casefold))
+
+
+def _semantic_id(tweet: Mapping[str, Any]) -> tuple[int, ...] | None:
+    stack: list[Any] = [tweet]
+    while stack:
+        value = stack.pop()
+        if isinstance(value, Mapping):
+            for key in ("semantic_id", "semantic_ids"):
+                codes = value.get(key)
+                if (
+                    isinstance(codes, (list, tuple))
+                    and len(codes) == 6
+                    and all(
+                        isinstance(code, int)
+                        and not isinstance(code, bool)
+                        and 0 <= code < 256
+                        for code in codes
+                    )
+                ):
+                    return tuple(codes)
+            stack.extend(
+                child
+                for key, child in value.items()
+                if key
+                not in {"simcluster", "simclusters", "sim_cluster", "sim_clusters"}
+                and isinstance(child, (Mapping, list))
+            )
+        elif isinstance(value, list):
+            stack.extend(value)
+    return None
 
 
 def _label_values(value: Any) -> Iterable[str]:
