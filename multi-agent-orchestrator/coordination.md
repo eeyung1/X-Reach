@@ -29,6 +29,7 @@
   1. **Host Docker Execution**: Docker Engine 29.1.3 and Docker Compose 2.40.3 are verified operational on this system.
   2. **Milestone 5 Objective**: Execute and validate the Docker build and cross-system deployment checklist from `todo.md` across 2 tasks: `task-docker-verify-images` and `task-compose-live-e2e`.
   3. **Decoupled Worker Workflow**: Worker agents claim tasks, isolate execution in Git worktrees, perform Docker builds/tests, and hand off commits without co-author trailers. The Planner agent (`planner-agent-01`) pushes the feature branch to `origin`, monitors GitHub Actions CI on HEAD, merges validated PRs into `main`, pulls merged `origin/main` locally, and reconciles the coordination ledgers to unblock downstream tasks.
+  4. **Path A Approved for Docker Validation**: Human operator approved remote GitHub Actions CI Runner (Path A). Configured `.github/workflows/ci.yml` with a dedicated `docker` job executing `Dockerfile.api` and `Dockerfile.web` image builds, `scripts/start.sh up`, gateway health checks, and `tests/e2e/` Compose test suite on Ubuntu runners, bypassing worker sandbox socket restrictions.
 
 
 

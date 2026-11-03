@@ -99,3 +99,29 @@ jobs:
           else
             echo "services/multimodal/tests not present in this branch"
           fi
+
+  docker:
+    name: Docker Build & Compose Stack E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install E2E Test Dependencies
+        run: pip install pytest
+      - name: Build API Container Image
+        run: docker build -f docker/Dockerfile.api -t x-reach-api:local .
+      - name: Build Web Container Image
+        run: docker build -f docker/Dockerfile.web -t x-reach-web:local .
+      - name: Launch Compose Stack
+        run: ./scripts/start.sh up
+      - name: Verify Gateway Health
+        run: |
+          curl -f http://127.0.0.1:8080/healthz
+          curl -f http://127.0.0.1:8080/
+      - name: Run Compose End-to-End Smoke Tests
+        run: python3 -m pytest tests/e2e/ -v
+      - name: Tear Down Stack
+        if: always()
+        run: ./scripts/start.sh down
