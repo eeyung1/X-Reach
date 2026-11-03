@@ -3,6 +3,7 @@ import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from xreach_api.calibration import ReachCalibrationConfig
@@ -77,8 +78,53 @@ class FakeMultimodal:
         }
 
 
-def client_with(scorer, multimodal=None, reach_calibration=None):
-    return TestClient(create_app(scorer, multimodal, reach_calibration))
+def client_with(
+    scorer, multimodal=None, reach_calibration=None, alert_admin_token=None
+):
+    return TestClient(
+        create_app(
+            scorer,
+            multimodal,
+            reach_calibration,
+            alert_admin_token=alert_admin_token,
+        )
+    )
+
+
+def alert_config():
+    return {
+        "rules": [
+            {
+                "rule_id": "fast-tech",
+                "min_views_per_minute": 500,
+                "max_age_minutes": 30,
+                "simclusters": ["Technology"],
+            }
+        ],
+        "webhooks": [
+            {
+                "webhook_id": "team-chat",
+                "url": "https://hooks.example.test/secret-path",
+                "secret": "never-return-this-secret",
+                "format": "slack",
+            }
+        ],
+    }
+
+
+def alert_seed(**changes):
+    return {
+        "tweet_id": "root-1",
+        "text": "A useful post",
+        "age_minutes": 5,
+        "views_per_minute": 900,
+        "simclusters": ["Technology"],
+        **changes,
+    }
+
+
+async def run_inline(function, *args):
+    return function(*args)
 
 
 def test_health_reports_api_status_without_building_rust_binary():
@@ -495,3 +541,124 @@ def test_radar_sse_stream_replays_events_and_sets_streaming_headers():
         assert next(lines) == "id: 1"
         assert next(lines) == "event: seed"
         assert '"tweet_id":"root-1"' in next(lines)
+
+
+def test_alert_configuration_requires_admin_and_never_returns_webhook_secret():
+    client = client_with(FakeRustScorer(), alert_admin_token="admin-secret")
+
+    denied = client.put("/api/v1/alerts", json=alert_config())
+    configured = client.put(
+        "/api/v1/alerts",
+        json=alert_config(),
+        headers={"X-Alert-Admin-Token": "admin-secret"},
+    )
+    readback = client.get(
+        "/api/v1/alerts", headers={"X-Alert-Admin-Token": "admin-secret"}
+    )
+
+    assert denied.status_code == 401
+    assert configured.status_code == 200
+    assert configured.json() == {
+        "rules": alert_config()["rules"],
+        "webhooks": [{"webhook_id": "team-chat", "format": "slack"}],
+    }
+    assert "never-return-this-secret" not in readback.text
+    assert "secret-path" not in readback.text
+
+
+def test_alert_configuration_rejects_duplicate_ids_and_unsafe_url():
+    client = client_with(FakeRustScorer(), alert_admin_token="admin-secret")
+    duplicate = alert_config()
+    duplicate["rules"].append(duplicate["rules"][0])
+    unsafe = alert_config()
+    unsafe["webhooks"][0]["url"] = "file:///etc/passwd"
+    headers = {"X-Alert-Admin-Token": "admin-secret"}
+
+    assert client.put("/api/v1/alerts", json=duplicate, headers=headers).status_code == 422
+    assert client.put("/api/v1/alerts", json=unsafe, headers=headers).status_code == 422
+
+
+def test_alert_test_endpoint_dispatches_matching_seed():
+    class Response:
+        status = 204
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+    client = client_with(FakeRustScorer(), alert_admin_token="admin-secret")
+    headers = {"X-Alert-Admin-Token": "admin-secret"}
+    assert client.put("/api/v1/alerts", json=alert_config(), headers=headers).status_code == 200
+
+    with (
+        patch("xreach_radar.alerts.urlopen", return_value=Response()) as send,
+        patch("xreach_radar.alerts.asyncio.to_thread", new=run_inline),
+    ):
+        response = client.post(
+            "/api/v1/alerts/test",
+            json={"rule_id": "fast-tech", "seed": alert_seed()},
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "event_id": "fast-tech:root-1",
+        "deliveries": {"team-chat": True},
+    }
+    assert send.call_count == 1
+    assert send.call_args.args[0].headers["X-xreach-signature"].startswith("sha256=")
+
+
+def test_alert_test_endpoint_rejects_missing_rules_and_nonmatching_seed():
+    client = client_with(FakeRustScorer(), alert_admin_token="admin-secret")
+    headers = {"X-Alert-Admin-Token": "admin-secret"}
+    client.put("/api/v1/alerts", json=alert_config(), headers=headers)
+
+    missing = client.post(
+        "/api/v1/alerts/test",
+        json={"rule_id": "missing", "seed": alert_seed()},
+        headers=headers,
+    )
+    unmatched = client.post(
+        "/api/v1/alerts/test",
+        json={"rule_id": "fast-tech", "seed": alert_seed(views_per_minute=20)},
+        headers=headers,
+    )
+
+    assert missing.status_code == 404
+    assert unmatched.status_code == 422
+
+
+def test_radar_ingestion_dispatches_matching_alert_in_background():
+    class PausedProducer:
+        async def run(self):
+            await asyncio.Event().wait()
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+    client = TestClient(
+        create_app(radar_producer=PausedProducer(), alert_admin_token="admin-secret")
+    )
+    headers = {"X-Alert-Admin-Token": "admin-secret"}
+    client.put("/api/v1/alerts", json=alert_config(), headers=headers)
+
+    with (
+        patch("xreach_radar.alerts.urlopen", return_value=Response()) as send,
+        patch("xreach_radar.alerts.asyncio.to_thread", new=run_inline),
+    ):
+        response = client.post(
+            "/api/v1/radar/events",
+            json={"events": [alert_seed()]},
+        )
+
+    assert response.status_code == 200
+    assert send.call_count == 1

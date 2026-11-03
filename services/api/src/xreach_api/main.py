@@ -5,13 +5,16 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import logging
 import os
+import sys
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, TypeVar
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ValidationError
 from starlette.datastructures import UploadFile
@@ -21,6 +24,10 @@ from .calibration import ReachCalibrationConfig
 from .models import (
     AnalyzeRequest,
     AnalyzeResponse,
+    AlertConfigurationRequest,
+    AlertConfigurationResponse,
+    AlertRuleConfig,
+    AlertTestRequest,
     AutomaticAnalyzeRequest,
     CandidateInput,
     MultimodalOutput,
@@ -44,6 +51,7 @@ from .rust_scorer import RustScorer, ScorerUnavailable
 
 MAX_MEDIA_BYTES = 50 * 1024 * 1024
 ModelT = TypeVar("ModelT", bound=BaseModel)
+logger = logging.getLogger(__name__)
 
 
 def create_app(
@@ -54,6 +62,7 @@ def create_app(
     radar_producer: RadarSeedProducer | None = None,
     radar_heartbeat_seconds: float = 15.0,
     radar_ingest_token: str | None = None,
+    alert_admin_token: str | None = None,
 ) -> FastAPI:
     if not 0.1 <= radar_heartbeat_seconds <= 300:
         raise ValueError("radar heartbeat interval must be between 0.1 and 300 seconds")
@@ -97,6 +106,13 @@ def create_app(
         if radar_ingest_token is not None
         else os.environ.get("XREACH_RADAR_INGEST_TOKEN")
     ) or None
+    app.state.alert_admin_token = (
+        alert_admin_token
+        if alert_admin_token is not None
+        else os.environ.get("XREACH_ALERT_ADMIN_TOKEN")
+    ) or None
+    app.state.alert_rules = []
+    app.state.alert_webhooks = {}
 
     @app.get("/healthz")
     def health() -> dict[str, str]:
@@ -188,6 +204,7 @@ def create_app(
     @app.post("/api/v1/radar/events")
     def ingest_radar_events(
         batch: RadarIngestRequest,
+        background_tasks: BackgroundTasks,
         authorization: str | None = Header(default=None),
     ) -> dict[str, Any]:
         expected = app.state.radar_ingest_token
@@ -211,10 +228,73 @@ def create_app(
         published = [
             app.state.radar_events.publish(payload) for payload in batch.events
         ]
+        for payload in batch.events:
+            background_tasks.add_task(_dispatch_seed_alerts, app, payload)
         return {
             "published": len(published),
             "first_event_id": published[0].event_id,
             "last_event_id": published[-1].event_id,
+        }
+
+    @app.get("/api/v1/alerts", response_model=AlertConfigurationResponse)
+    def get_alert_configuration(
+        x_alert_admin_token: str | None = Header(default=None),
+    ) -> AlertConfigurationResponse:
+        _require_alert_admin(app, x_alert_admin_token)
+        return _alert_configuration_response(app)
+
+    @app.put("/api/v1/alerts", response_model=AlertConfigurationResponse)
+    def set_alert_configuration(
+        configuration: AlertConfigurationRequest,
+        x_alert_admin_token: str | None = Header(default=None),
+    ) -> AlertConfigurationResponse:
+        _require_alert_admin(app, x_alert_admin_token)
+        AlertRule, _, _, WebhookTarget = _alert_components()
+        app.state.alert_rules = [
+            AlertRule(
+                rule.rule_id,
+                rule.min_views_per_minute,
+                rule.max_age_minutes,
+                frozenset(rule.simclusters),
+            )
+            for rule in configuration.rules
+        ]
+        app.state.alert_webhooks = {
+            webhook.webhook_id: WebhookTarget(
+                webhook.url,
+                webhook.secret,
+                format=webhook.format,
+            )
+            for webhook in configuration.webhooks
+        }
+        return _alert_configuration_response(app)
+
+    @app.post("/api/v1/alerts/test")
+    async def test_alert_configuration(
+        payload: AlertTestRequest,
+        x_alert_admin_token: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        _require_alert_admin(app, x_alert_admin_token)
+        rules = {rule.rule_id: rule for rule in app.state.alert_rules}
+        rule = rules.get(payload.rule_id)
+        if rule is None:
+            raise HTTPException(status_code=404, detail="alert rule not found")
+        if not app.state.alert_webhooks:
+            raise HTTPException(
+                status_code=409, detail="no alert webhooks are configured"
+            )
+        _, AlertRuleEngine, WebhookDispatcher, _ = _alert_components()
+        events = AlertRuleEngine([rule]).evaluate(payload.seed)
+        if not events:
+            raise HTTPException(
+                status_code=422,
+                detail="seed does not satisfy the selected alert rule",
+            )
+        dispatcher = WebhookDispatcher(list(app.state.alert_webhooks.values()))
+        deliveries = await dispatcher.dispatch(events[0])
+        return {
+            "event_id": events[0].event_id,
+            "deliveries": dict(zip(app.state.alert_webhooks, deliveries, strict=True)),
         }
 
     @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
@@ -484,6 +564,81 @@ def _score_output(result: dict[str, Any]) -> ScoreOutput:
         out_of_network_multiplier=result["out_of_network_multiplier"],
         dropped_by=result["dropped_by"],
     )
+
+
+def _alert_components():
+    """Load the sibling radar package in editable and installed deployments."""
+    try:
+        from xreach_radar.alerts import (
+            AlertRule,
+            AlertRuleEngine,
+            WebhookDispatcher,
+            WebhookTarget,
+        )
+    except ModuleNotFoundError as error:
+        if error.name != "xreach_radar" and not str(error.name).startswith(
+            "xreach_radar."
+        ):
+            raise
+        radar_source = Path(__file__).resolve().parents[3] / "radar" / "src"
+        sys.path.insert(0, str(radar_source))
+        from xreach_radar.alerts import (
+            AlertRule,
+            AlertRuleEngine,
+            WebhookDispatcher,
+            WebhookTarget,
+        )
+    return AlertRule, AlertRuleEngine, WebhookDispatcher, WebhookTarget
+
+
+def _require_alert_admin(app: FastAPI, supplied: str | None) -> None:
+    expected = app.state.alert_admin_token
+    if expected is None:
+        raise HTTPException(
+            status_code=503,
+            detail="alert administration is disabled; configure XREACH_ALERT_ADMIN_TOKEN",
+        )
+    if supplied is None or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="invalid alert admin token")
+
+
+def _alert_configuration_response(app: FastAPI) -> AlertConfigurationResponse:
+    return AlertConfigurationResponse(
+        rules=[
+            AlertRuleConfig(
+                rule_id=rule.rule_id,
+                min_views_per_minute=rule.min_views_per_minute,
+                max_age_minutes=rule.max_age_minutes,
+                simclusters=sorted(rule.simclusters),
+            )
+            for rule in app.state.alert_rules
+        ],
+        webhooks=[
+            {"webhook_id": webhook_id, "format": target.format}
+            for webhook_id, target in app.state.alert_webhooks.items()
+        ],
+    )
+
+
+async def _dispatch_seed_alerts(app: FastAPI, seed: Mapping[str, Any]) -> None:
+    if not app.state.alert_rules or not app.state.alert_webhooks:
+        return
+    try:
+        _, AlertRuleEngine, WebhookDispatcher, _ = _alert_components()
+        events = AlertRuleEngine(app.state.alert_rules).evaluate(seed)
+        if not events:
+            return
+        dispatcher = WebhookDispatcher(list(app.state.alert_webhooks.values()))
+        for event in events:
+            results = await dispatcher.dispatch(event)
+            if not all(results):
+                logger.warning(
+                    "one or more alert webhooks failed for event %s", event.event_id
+                )
+    except Exception:
+        logger.exception(
+            "failed to dispatch radar alert for seed %s", seed.get("tweet_id")
+        )
 
 
 app = create_app()

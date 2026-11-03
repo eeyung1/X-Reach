@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -173,3 +174,62 @@ class RadarIngestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     events: list[dict[str, object]] = Field(min_length=1, max_length=500)
+
+
+class AlertRuleConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule_id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+    min_views_per_minute: float = Field(default=500, ge=0, allow_inf_nan=False)
+    max_age_minutes: float = Field(default=30, gt=0, allow_inf_nan=False)
+    simclusters: list[str] = Field(default_factory=list, max_length=100)
+
+
+class AlertWebhookConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    webhook_id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+    url: str = Field(min_length=1, max_length=2048)
+    secret: str = Field(min_length=1, max_length=4096)
+    format: Literal["generic", "discord", "slack"] = "generic"
+
+    @field_validator("url")
+    @classmethod
+    def validate_webhook_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("webhook URL must use HTTP or HTTPS and include a host")
+        if parsed.username or parsed.password:
+            raise ValueError("webhook URL must not contain credentials")
+        try:
+            parsed.port
+        except ValueError as error:
+            raise ValueError("webhook URL must include a valid port") from error
+        return value
+
+
+class AlertConfigurationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rules: list[AlertRuleConfig] = Field(max_length=100)
+    webhooks: list[AlertWebhookConfig] = Field(max_length=100)
+
+    @model_validator(mode="after")
+    def require_unique_ids(self) -> AlertConfigurationRequest:
+        if len({rule.rule_id for rule in self.rules}) != len(self.rules):
+            raise ValueError("alert rule IDs must be unique")
+        if len({target.webhook_id for target in self.webhooks}) != len(self.webhooks):
+            raise ValueError("webhook IDs must be unique")
+        return self
+
+
+class AlertConfigurationResponse(BaseModel):
+    rules: list[AlertRuleConfig]
+    webhooks: list[dict[str, str]]
+
+
+class AlertTestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule_id: str = Field(min_length=1, max_length=80)
+    seed: dict[str, Any]

@@ -67,6 +67,41 @@ The standalone `xreach-radar daemon` process publishes seed batches to
 containers to require a bearer token. If the token is omitted, ingestion is
 unauthenticated and should only be exposed on a private container network.
 
+## Radar alerts
+
+Set `XREACH_ALERT_ADMIN_TOKEN` to enable alert administration. Supply it in the
+`X-Alert-Admin-Token` header when calling `GET` or `PUT /api/v1/alerts` and
+`POST /api/v1/alerts/test`. The configuration replaces the current process's
+rules and webhook targets; webhook secrets and URL paths are never returned by
+the configuration response. A test request evaluates a sample seed against a
+selected rule and attempts delivery to every configured target. Matching seeds
+received by `/api/v1/radar/events` are dispatched in a FastAPI background task.
+
+```json
+{
+  "rules": [
+    {
+      "rule_id": "fast-tech",
+      "min_views_per_minute": 500,
+      "max_age_minutes": 30,
+      "simclusters": ["Technology"]
+    }
+  ],
+  "webhooks": [
+    {
+      "webhook_id": "team-chat",
+      "url": "https://hooks.example.test/endpoint",
+      "secret": "replace-with-a-random-secret",
+      "format": "slack"
+    }
+  ]
+}
+```
+
+Alert settings are held in process memory and must be configured again after a
+restart. Keep one API worker while relying on radar ingestion and alert delivery,
+as each process has its own settings and event buffer.
+
 ## Reach calibration
 
 Set `XREACH_REACH_CALIBRATION_FILE` to a JSON calibration file to enable
