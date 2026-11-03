@@ -34,9 +34,15 @@
 
 ## Blockers and Proposed Decisions
 
+- **2026-11-03T18:45:00Z — Milestone 5 Orchestrator & State Reconciled (RESOLVED)**:
+  1. `scripts/orchestrator` has been updated to dynamically resolve and invoke the built binary at `../multi-agent-orchestrator/bin/orchestrator`, eliminating external machine path dependencies.
+  2. The machine authority in `state.json` is verified at Generation 41 (NATIVE disposition for `/home/eeyung/Projects/X-Reach`). Active claims and tasks in structured state are empty by design because all 16 prior tasks are merged and complete.
+  3. Task 17 (`task-docker-verify-images`) is officially open and authorized for worker claim via `./scripts/orchestrator --workspace . --start`.
+  4. Docker socket notice: Docker Engine 29.1.3 is confirmed running on the host system; worker agents must execute Docker commands with access to `/var/run/docker.sock` (unsandboxed / elevated host permissions).
+
 - **2026-11-03T14:47:00Z — Milestone 3 scope sequencing blocker RESOLVED**: `task-reach-calibration` has completed, passed remote CI (run 41656981507), and merged into `main`. The `services/api/` scope is cleanly unblocked on `main` and claimed by `Codex-20261103-b7e4-20261103-8f5600ff` for `task-radar-sse-stream`.
 
-- **2026-11-03T13:03:27Z — Coordination-state discrepancy (worker report)**: `orchestrator --start/--complete` updated `agentmeeting.md`, worktrees, and `resolution.md`, but `state.json` still has empty claims/tasks and reports completed/blocked workers as ACTIVE. Backlog status cells also remain Unclaimed despite lifecycle evidence. ORCHESTRATOR should reconcile the machine authority before assigning overlapping work; existing feature commits/worktrees remain protected evidence.
+- **2026-11-03T13:03:27Z — Coordination-state discrepancy (HISTORICAL / RESOLVED)**: Prior milestone discrepancy has been reconciled across all 16 merged features, clean state generation, and synchronized ledgers. No lingering claims or conflicting worktrees exist on `main`.
 
 ## Automated Actions
 

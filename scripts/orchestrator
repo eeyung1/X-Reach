@@ -1,10 +1,23 @@
 #!/usr/bin/env bash
 # X-Reach Orchestrator Bridge
-ORCHESTRATOR_BIN="/home/recoding/Projects/multi-agent-orchestrator/bin/orchestrator"
+set -e
 
-if [ ! -f "$ORCHESTRATOR_BIN" ]; then
-    echo "Error: Orchestrator binary not found at $ORCHESTRATOR_BIN" >&2
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+XREACH_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECTS_DIR="$(dirname "$XREACH_ROOT")"
+ORCH_DIR="${PROJECTS_DIR}/multi-agent-orchestrator"
+
+if [ -n "$ORCHESTRATOR_BIN" ] && [ -x "$ORCHESTRATOR_BIN" ]; then
+    EXEC_BIN="$ORCHESTRATOR_BIN"
+elif [ -x "${ORCH_DIR}/bin/orchestrator" ]; then
+    EXEC_BIN="${ORCH_DIR}/bin/orchestrator"
+elif [ -d "$ORCH_DIR" ]; then
+    mkdir -p "${ORCH_DIR}/bin"
+    (cd "$ORCH_DIR" && go build -o "${ORCH_DIR}/bin/orchestrator" ./cmd/orchestrator)
+    EXEC_BIN="${ORCH_DIR}/bin/orchestrator"
+else
+    echo "Error: multi-agent-orchestrator not found at $ORCH_DIR" >&2
     exit 1
 fi
 
-exec "$ORCHESTRATOR_BIN" "$@"
+exec "$EXEC_BIN" "$@"
