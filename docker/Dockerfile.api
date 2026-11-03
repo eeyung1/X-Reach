@@ -1,0 +1,44 @@
+# syntax=docker/dockerfile:1
+
+FROM rust:1-bookworm AS rust-build
+WORKDIR /src
+COPY crates/xreach-core ./crates/xreach-core
+COPY services/api/rust-bridge ./services/api/rust-bridge
+RUN cargo build --release --manifest-path services/api/rust-bridge/Cargo.toml
+
+FROM python:3.11-slim-bookworm AS python-build
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+WORKDIR /src
+COPY services/api ./services/api
+COPY services/multimodal ./services/multimodal
+COPY services/radar ./services/radar
+RUN python -m pip install --prefix=/install \
+    './services/multimodal[inference]' \
+    ./services/radar \
+    ./services/api
+
+FROM python:3.11-slim-bookworm AS runtime
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    XREACH_SCORER_BIN=/usr/local/bin/xreach-api-scorer \
+    HF_HOME=/models/huggingface \
+    HUGGINGFACE_HUB_CACHE=/models/huggingface/hub \
+    TORCH_HOME=/models/torch \
+    XDG_CACHE_HOME=/models/cache
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 10001 xreach \
+    && useradd --system --uid 10001 --gid xreach --home-dir /home/xreach xreach \
+    && mkdir -p /models /data \
+    && chown xreach:xreach /models /data
+COPY --from=python-build /install/ /usr/local/
+COPY --from=rust-build /src/services/api/rust-bridge/target/release/xreach-api-scorer /usr/local/bin/xreach-api-scorer
+WORKDIR /app
+VOLUME ["/models", "/data"]
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+USER xreach
+CMD ["uvicorn", "xreach_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
