@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import AlertSettings from "./components/AlertSettings";
 
 type KeyframePreview = {
   preview: string;
@@ -934,11 +935,13 @@ export default function Home() {
         )}
       </section>
 
+      <AlertSettings />
+
       {activeReplyTarget && (
         <section className="reply-panel panel" ref={replyComposerRef} aria-labelledby="reply-heading">
           <div className="panel-heading">
             <div>
-              <span className="step">04 / REPLY TARGETING</span>
+              <span className="step">05 / REPLY TARGETING</span>
               <h2 id="reply-heading">Reply to a live opportunity</h2>
             </div>
             <button type="button" className="reply-close" onClick={() => setActiveReplyTarget(null)} aria-label="Close reply composer">×</button>
