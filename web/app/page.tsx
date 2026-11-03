@@ -31,6 +31,7 @@ type Analysis = {
   algorithmic_viability_score: number;
   reach_potential_percentile: number | string | null;
   reach_calibration_status?: string;
+  predicted_probabilities?: Record<string, number | null> | null;
   placement_recommendation: PlacementRecommendation;
   suggested_tweaks?: string[];
   semantic_ids?: unknown;
@@ -41,6 +42,38 @@ type Analysis = {
     semantic_id?: unknown;
     keyframes?: unknown;
   };
+};
+
+type ReplyTarget = {
+  tweet_id: string;
+  conversation_id: string;
+  in_reply_to_tweet_id: string;
+  author: string;
+  text: string;
+};
+
+type PlacementCandidateScore = {
+  weighted_score: number;
+  final_score: number;
+  author_diversity_multiplier: number;
+  out_of_network_multiplier: number;
+  dropped_by: string[];
+};
+
+type PlacementEvaluation = {
+  recommended_surface: string;
+  reasoning: string;
+  reach_potential_percentile: number | null;
+  reach_calibration_status: string;
+  scores: {
+    profile: PlacementCandidateScore;
+    direct_root_reply: PlacementCandidateScore;
+  };
+};
+
+type ReplyEvaluation = {
+  placement: PlacementEvaluation;
+  comparativeAdvantage: number;
 };
 
 type RadarSeed = {
@@ -286,10 +319,16 @@ export default function Home() {
   const [radarFilterRevision, setRadarFilterRevision] = useState(0);
   const [radarNotice, setRadarNotice] = useState("");
   const [radarNow, setRadarNow] = useState(0);
+  const [activeReplyTarget, setActiveReplyTarget] = useState<ReplyTarget | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [replyBusy, setReplyBusy] = useState(false);
+  const [replyNotice, setReplyNotice] = useState("");
+  const [replyEvaluation, setReplyEvaluation] = useState<ReplyEvaluation | null>(null);
   const [notice, setNotice] = useState(
     "Add a draft to request live multimodal analysis. The report preview is illustrative until then.",
   );
   const inputRef = useRef<HTMLInputElement>(null);
+  const replyComposerRef = useRef<HTMLElement>(null);
   const mediaRef = useRef<MediaItem[]>([]);
 
   useEffect(() => {
@@ -353,6 +392,88 @@ export default function Home() {
     setRadarFilter(radarFilterDraft.trim());
     setRadarFilterRevision((revision) => revision + 1);
   }
+
+  function selectReplyTarget(seed: RadarSeed) {
+    setActiveReplyTarget({
+      tweet_id: seed.tweet_id,
+      conversation_id: seed.conversation_id ?? "",
+      in_reply_to_tweet_id: seed.tweet_id,
+      author: seed.screen_name ? `@${seed.screen_name}` : seed.author_id ? `Author ${seed.author_id}` : "X post",
+      text: seed.text?.trim() || "Post text was not present in this capture.",
+    });
+    setReplyText("");
+    setReplyEvaluation(null);
+    setReplyNotice("");
+    window.setTimeout(() => replyComposerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
+  async function evaluateReply(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activeReplyTarget) return;
+    if (!activeReplyTarget.conversation_id || activeReplyTarget.in_reply_to_tweet_id !== activeReplyTarget.conversation_id) {
+      setReplyNotice("Target verification failed: the reply must point to the root conversation post.");
+      return;
+    }
+    if (!replyText.trim()) {
+      setReplyNotice("Write a reply before evaluating placement.");
+      return;
+    }
+
+    setReplyBusy(true);
+    setReplyEvaluation(null);
+    setReplyNotice("Analyzing the reply and comparing placement scores…");
+    try {
+      const analysisResponse = await fetch("/api/v1/analyze", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ text: replyText.trim() }),
+      });
+      const analysisPayload = (await analysisResponse.json().catch(() => null)) as Analysis | null;
+      if (!analysisResponse.ok) {
+        throw new Error(errorDetail(analysisPayload) ?? `Analysis failed with status ${analysisResponse.status}.`);
+      }
+      const predictions = analysisPayload?.predicted_probabilities;
+      if (!predictions || Object.keys(predictions).length === 0) {
+        throw new Error("Analysis did not return action predictions required for placement comparison.");
+      }
+
+      const placementResponse = await fetch("/api/v1/placement", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: replyText.trim(),
+          profile_predictions: predictions,
+          direct_root_reply_predictions: predictions,
+        }),
+      });
+      const placementPayload = (await placementResponse.json().catch(() => null)) as PlacementEvaluation | null;
+      if (!placementResponse.ok) {
+        throw new Error(errorDetail(placementPayload) ?? `Placement comparison failed with status ${placementResponse.status}.`);
+      }
+      const profileScore = placementPayload?.scores?.profile?.final_score;
+      const replyScore = placementPayload?.scores?.direct_root_reply?.final_score;
+      if (
+        !placementPayload?.recommended_surface ||
+        typeof profileScore !== "number" ||
+        !Number.isFinite(profileScore) ||
+        typeof replyScore !== "number" ||
+        !Number.isFinite(replyScore)
+      ) {
+        throw new Error("Placement response is incomplete.");
+      }
+      setReplyEvaluation({ placement: placementPayload, comparativeAdvantage: replyScore - profileScore });
+      setReplyNotice("Comparison complete. No post was published.");
+    } catch (error) {
+      setReplyNotice(error instanceof Error ? error.message : "The reply comparison request failed.");
+    } finally {
+      setReplyBusy(false);
+    }
+  }
+
+  const replyTargetVerified = Boolean(
+    activeReplyTarget?.conversation_id &&
+      activeReplyTarget.in_reply_to_tweet_id === activeReplyTarget.conversation_id,
+  );
 
   async function addFiles(files: FileList | File[]) {
     const incoming = Array.from(files);
@@ -790,6 +911,9 @@ export default function Home() {
                     >
                       OPEN POST <span aria-hidden="true">↗</span>
                     </a>
+                    <button type="button" className="radar-reply-action" onClick={() => selectReplyTarget(seed)}>
+                      WRITE REPLY
+                    </button>
                   </div>
                 </article>
               );
@@ -809,6 +933,72 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {activeReplyTarget && (
+        <section className="reply-panel panel" ref={replyComposerRef} aria-labelledby="reply-heading">
+          <div className="panel-heading">
+            <div>
+              <span className="step">04 / REPLY TARGETING</span>
+              <h2 id="reply-heading">Reply to a live opportunity</h2>
+            </div>
+            <button type="button" className="reply-close" onClick={() => setActiveReplyTarget(null)} aria-label="Close reply composer">×</button>
+          </div>
+
+          <div className="reply-context">
+            <strong>{activeReplyTarget.author}</strong>
+            <p>{activeReplyTarget.text}</p>
+          </div>
+          <div className="reply-target-check" role="status">
+            <span className={replyTargetVerified ? "target-verified" : "target-mismatch"}>
+              {replyTargetVerified ? "TARGET VERIFIED" : "TARGET NEEDS REVIEW"}
+            </span>
+            <span>Reply to {activeReplyTarget.in_reply_to_tweet_id || "missing"}</span>
+            <span>Conversation {activeReplyTarget.conversation_id || "missing"}</span>
+          </div>
+          {!replyTargetVerified && (
+            <p className="reply-validation">Direct reply evaluation requires in_reply_to_tweet_id to match conversation_id.</p>
+          )}
+
+          <form onSubmit={evaluateReply}>
+            <label className="sr-only" htmlFor="reply-text">Write your reply</label>
+            <textarea
+              id="reply-text"
+              value={replyText}
+              onChange={(event) => {
+                setReplyText(event.target.value);
+                setReplyEvaluation(null);
+              }}
+              placeholder="Write a useful, specific reply to this post…"
+              maxLength={280}
+            />
+            <div className="reply-form-footer">
+              <span>{replyText.length} / 280 characters</span>
+              <button className="analyze-button" type="submit" disabled={replyBusy || !replyTargetVerified || !replyText.trim()}>
+                {replyBusy ? "Evaluating…" : "Evaluate comparative advantage"}<span aria-hidden="true">↗</span>
+              </button>
+            </div>
+          </form>
+
+          <p className="reply-analysis-only">Analysis only — this does not publish or send a post.</p>
+          {replyNotice && <p className="reply-notice" role="status">{replyNotice}</p>}
+          {replyEvaluation && (
+            <div className="reply-result" aria-live="polite">
+              <div className="reply-result-heading">
+                <span>COMPARATIVE ADVANTAGE</span>
+                <strong className={replyEvaluation.comparativeAdvantage >= 0 ? "advantage-positive" : "advantage-negative"}>
+                  {replyEvaluation.comparativeAdvantage > 0 ? "+" : ""}{replyEvaluation.comparativeAdvantage.toFixed(3)}
+                </strong>
+              </div>
+              <div className="reply-score-grid">
+                <div><span>PROFILE SCORE</span><strong>{replyEvaluation.placement.scores.profile.final_score.toFixed(3)}</strong></div>
+                <div><span>DIRECT REPLY SCORE</span><strong>{replyEvaluation.placement.scores.direct_root_reply.final_score.toFixed(3)}</strong></div>
+                <div><span>RECOMMENDED</span><strong>{replyEvaluation.placement.recommended_surface}</strong></div>
+              </div>
+              <p>{replyEvaluation.placement.reasoning}</p>
+            </div>
+          )}
+        </section>
+      )}
 
       <footer className="page-footer">
         <span>
