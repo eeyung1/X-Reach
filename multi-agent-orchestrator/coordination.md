@@ -7,6 +7,12 @@
 - **Engines**: x-algorithm-main (Phoenix Value Model & Visibility Filtering) & rea-main (Reverse-Engineering Telemetry)
 
 ## Standing Permissions
+- **Remote Integration Workflow**: When worker agents complete task handoffs, the Planner agent (`planner-agent-01`) is authorized to execute the publication pipeline:
+  1. Create / update remote tracking branch on `origin`.
+  2. Push feature branch to `origin`.
+  3. Open Pull Request and wait for remote CI checks to pass on the exact commit HEAD.
+  4. Merge validated PR into `main`.
+  5. Pull merged `main` locally, reconcile coordination ledgers (`agentmeeting.md`, `resolution.md`, `state.json`), and unblock downstream tasks.
 
 ## Owner Decisions
 - **2026-11-03**: Human operator onboarded Antigravity as the **Planner Agent** (`planner-agent-01`) to lead repository reconnaissance, objective clarification, task decomposition, and continuous PR integration. Implementation work will be executed by Worker agents in isolated Git worktrees.
