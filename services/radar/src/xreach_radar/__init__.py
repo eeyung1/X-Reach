@@ -1,5 +1,6 @@
 """REA-backed live radar for X-Reach."""
 
+from .alerts import AlertEvent, AlertRule, AlertRuleEngine, WebhookDispatcher, WebhookTarget
 from .cdp_client import ReaClient, ReaCommandError
 from .daemon import (
     ApiEventSink,
@@ -23,6 +24,9 @@ from .simclusters import (
 __all__ = [
     "ActiveSimCluster",
     "AlignedViralSeed",
+    "AlertEvent",
+    "AlertRule",
+    "AlertRuleEngine",
     "ApiEventSink",
     "CaptureFileSource",
     "ClusterMatch",
@@ -37,6 +41,8 @@ __all__ = [
     "SimClusterIndex",
     "SimClusterScout",
     "ViralSeed",
+    "WebhookDispatcher",
+    "WebhookTarget",
     "iter_graphql_documents",
     "semantic_id",
     "shared_prefix_levels",
