@@ -471,3 +471,18 @@ Append-only completed-work evidence.
 - GitHub Actions CI Run: 41715139895
 - CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone, API Tests [26/26 passed], Radar Tests, Docker Build & Compose Stack E2E)
 - Integrated into main: commit via no-ff merge.
+
+## task-web-alert-settings — token-web-alert-settings-1793740000
+- Session: Codex-20261103-webalerts-87c19e42-20261103-2db9459a
+- State: COMPLETE
+- Validation: python3 -c 'import subprocess; subprocess.run(["git", "diff", "--check"], check=True)'
+- Evidence: web/app/components/AlertSettings.tsx created with authenticated rule configuration, HMAC secret generation, webhook destination testing, and Next.js Drop-Zone page integration.
+- Recorded UTC: 2026-11-03T21:02:09Z
+
+### task-web-alert-settings integration evidence
+- Feature: task-web-alert-settings
+- Planner / Integrator: planner-agent-01
+- Remote Branch: origin/agent/task-web-alert-settings (HEAD 3050aeba13d8c8e9a4946a408a0e1d7bfe2c8f5b)
+- GitHub Actions CI Run: 41718481931
+- CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone Build, API Tests, Radar Tests, Docker Build & Compose Stack E2E)
+- Integrated into main: commit via no-ff merge.
