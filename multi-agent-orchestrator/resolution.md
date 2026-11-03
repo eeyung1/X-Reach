@@ -76,3 +76,28 @@ Append-only completed-work evidence.
 - GitHub Actions CI Run: 41642244596
 - CI Conclusion: SUCCESS (13/13 radar unit tests passed)
 - Integrated into main: commit merged via no-ff merge.
+
+## task-python-api — codex-b7e4-python-api-20261103
+- Session: Codex-20261103-b7e4-20261103-3160bbf6
+- State: BLOCKED
+- Validation: pytest services/api/tests/
+- Evidence: 
+- Recorded UTC: 2026-11-03T13:33:48Z
+
+### Python API handoff evidence
+- Feature: task-python-api; owner/session: Codex-20261103-b7e4-20261103-3160bbf6.
+- Branch/worktree: agent/task-python-api at .agent-worktrees/task-python-api.
+- Commit: 236b3b0debcc0ac0faea7983d9b8898194e0acf7.
+- Files: services/api/.gitignore, README.md, pyproject.toml, rust-bridge/Cargo.toml, rust-bridge/src/main.rs, src/xreach_api/{__init__,main,models,rust_scorer}.py, tests/{conftest,test_api}.py.
+- Implementation: FastAPI `/api/v1/analyze` and `/api/v1/placement`; Rust JSON bridge calls `xreach-core`; request validation, visibility drops, per-surface score comparison, and API tests. Percentile is null until calibration data exists; action predictions must be supplied by a model layer.
+- Validation: Python AST/compileall and TOML parsing passed. `pytest services/api/tests/` could not start (`pytest` not found). `cargo test --manifest-path services/api/rust-bridge/Cargo.toml` could not start (`cargo` not found).
+- Remaining gates: install Python test dependencies and Rust toolchain, run both commands, then verify the API request contract with the web client/model provider.
+- Follow-up owner: ORCHESTRATOR / integrator; branch is local and not pushed.
+
+## task-python-api integration — 2026-11-03T13:41:18Z
+- Integrator: planner-agent-01
+- Remote Branch: origin/agent/task-python-api
+- Remote Commit: 57def24f7a6a9a1b19192c856565e65487523915
+- GitHub Actions CI Run: 41646320825
+- CI Conclusion: SUCCESS (Rust bridge build + 7/7 FastAPI pytest tests passed)
+- Integrated into main: commit merged via no-ff merge.
