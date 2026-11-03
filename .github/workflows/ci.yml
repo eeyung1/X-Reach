@@ -57,3 +57,27 @@ jobs:
           else
             echo "services/radar/tests not present in this branch"
           fi
+
+  api:
+    name: API Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build Rust Scorer Bridge
+        run: |
+          if [ -f services/api/rust-bridge/Cargo.toml ]; then
+            cargo build --manifest-path services/api/rust-bridge/Cargo.toml --release
+          fi
+      - name: Run API Tests
+        run: |
+          if [ -d services/api/tests ]; then
+            cd services/api
+            pip install ".[test]"
+            pytest
+          else
+            echo "services/api/tests not present in this branch"
+          fi
