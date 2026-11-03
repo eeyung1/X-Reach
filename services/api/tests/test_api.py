@@ -127,7 +127,7 @@ def test_rust_scorer_uses_configured_json_process(tmp_path: Path):
         "print(json.dumps({'weighted_score': request['predictions']['favorite']}))\n",
         encoding="utf-8",
     )
-    executable.chmod(executable.stat().st_mode | os.X_OK)
+    executable.chmod(0o755)
 
     result = RustScorer(binary=str(executable)).score(
         {"predictions": {"favorite": 0.25}}
