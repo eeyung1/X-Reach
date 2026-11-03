@@ -20,7 +20,17 @@ case "$ACTION" in
   up)
     mkdir -p "${XREACH_DATA_DIR:-$ROOT_DIR/data}"
     chmod 777 "${XREACH_DATA_DIR:-$ROOT_DIR/data}" 2>/dev/null || true
-    docker compose up --build --detach --wait --wait-timeout 180 "$@"
+    docker compose up --build --detach "$@"
+    port="${XREACH_HTTP_PORT:-8080}"
+    for i in $(seq 1 30); do
+      if curl -sf "http://127.0.0.1:$port/healthz" >/dev/null 2>&1; then
+        echo "X-Reach Compose stack is healthy and ready on port $port."
+        exit 0
+      fi
+      sleep 2
+    done
+    echo "Timed out waiting for X-Reach gateway healthz on port $port." >&2
+    exit 1
     ;;
   down)
     docker compose down "$@"
