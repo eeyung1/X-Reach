@@ -10,7 +10,7 @@ data is configured.
 ## Setup
 
 ```bash
-python -m pip install -e "../multimodal[inference]" -e ".[test]"
+python -m pip install -e "../multimodal[inference]" -e "../radar" -e ".[test]"
 cargo build --release --manifest-path rust-bridge/Cargo.toml
 uvicorn xreach_api.main:app --app-dir src --reload
 ```
@@ -18,6 +18,24 @@ uvicorn xreach_api.main:app --app-dir src --reload
 The Rust bridge uses the workspace `crates/xreach-core` via a relative Cargo
 path dependency. Set `XREACH_SCORER_BIN` to use a prebuilt scorer executable.
 If unset, the API lazily builds the bridge when the first score is requested.
+
+## Live radar stream
+
+`GET /api/v1/radar/stream` is a server-sent event stream of fresh viral root
+posts found by the radar scout. Configure `XREACH_RADAR_CAPTURE_FILE` to point
+to a JSON HAR or REA capture snapshot that an external capture process refreshes;
+the API background producer scans changed snapshots every five seconds by
+default. Set `XREACH_RADAR_POLL_SECONDS` to change that interval. With no capture
+file configured, the endpoint stays open and sends heartbeat events while
+waiting for seeds.
+
+Events include a monotonically increasing `id`, `event: seed`, and JSON seed
+data. Pass `Last-Event-ID` to replay newer entries from the in-memory ring, or
+filter by cluster with `?simcluster=Technology` (repeat the parameter for more
+labels). If a reconnect asks for history older than the ring, the stream sends
+an `event: reset` notice before the available events. The buffer holds the most
+recent 500 seeds per API process; run a single API worker when clients need one
+continuous event history.
 
 ## Analyze a draft
 
