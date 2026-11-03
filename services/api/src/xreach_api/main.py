@@ -249,7 +249,7 @@ def create_app(
         x_alert_admin_token: str | None = Header(default=None),
     ) -> AlertConfigurationResponse:
         _require_alert_admin(app, x_alert_admin_token)
-        AlertRule, _, WebhookTarget, _ = _alert_components()
+        AlertRule, _, _, WebhookTarget = _alert_components()
         app.state.alert_rules = [
             AlertRule(
                 rule.rule_id,
