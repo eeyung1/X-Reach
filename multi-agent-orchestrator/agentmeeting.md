@@ -41,6 +41,10 @@
 | 16 | task-compose-e2e-stack | docker-compose.yml, scripts/, tests/e2e/ | Complete (Merged) | Codex-20261103-b7e4-20261103-6994a83e | task-docker-services, task-docker-web, task-radar-daemon-runner | Unified docker-compose.yml stack orchestrating API, web, and radar daemon with model cache volumes, start script, and E2E verification | docker compose config && pytest tests/e2e/ || pytest services/api/tests/ |
 | 17 | task-docker-verify-images | docker/, data/ | Complete (CI Verified) | planner-agent-01 | - | Build and verify API (Dockerfile.api) and Web (Dockerfile.web) container images; test container health check endpoints | GitHub Actions run 41705797810 |
 | 18 | task-compose-live-e2e | scripts/, tests/e2e/, todo.md | Complete (CI Verified) | planner-agent-01 | task-docker-verify-images | Execute Compose stack with scripts/start.sh up; verify Nginx gateway on port 8080; run scripts/e2e.sh pytest suite; update todo.md cross-system checklist | GitHub Actions run 41705797810 |
+| 19 | task-alert-dispatcher-engine | services/radar/, services/api/ | Unclaimed (Ready) | - | - | Autonomous reply-timing alert rules engine, multi-target payload formatters (Discord, Slack, Generic JSON), async webhook dispatcher with retries and HMAC signatures | pytest services/radar/tests/ || pytest services/api/tests/ |
+| 20 | task-api-alert-endpoints | services/api/ | Unclaimed | - | task-alert-dispatcher-engine | FastAPI endpoints for webhook alert configuration and immediate testing (POST /api/v1/alerts/test); automatic background trigger on radar seed ingestion | pytest services/api/tests/ |
+| 21 | task-web-alert-settings | web/ | Unclaimed | - | task-api-alert-endpoints | Web drop-zone UI panel for Autonomous Reply-Timing Alerts: webhook destination configuration, velocity/age thresholds, test trigger button, and status indicators | npm --prefix web run build |
+| 22 | task-alert-compose-e2e | tests/e2e/, docker-compose.yml, scripts/ | Unclaimed | - | task-alert-dispatcher-engine, task-api-alert-endpoints, task-web-alert-settings | End-to-end integration test verifying live radar opportunity alerts trigger and dispatch to webhook listener through Compose stack | pytest tests/e2e/ -v |
 
 ## Atomic Claims
 
@@ -99,3 +103,4 @@
 - 2026-11-03T18:50:00Z — planner-agent-01: RECONCILED: Worker session marked BLOCKED in state.json; Task 17 remains Unclaimed (Ready).
 - 2026-11-03T19:35:00Z — planner-agent-01: CI VERIFIED: GitHub Actions run 41705797810 for Docker Build & Compose Stack E2E passed on HEAD 26eae6f (API Dockerfile build, Web Dockerfile build, container healthchecks, Nginx gateway port 8080, and pytest tests/e2e/).
 - 2026-11-03T19:40:00Z — planner-agent-01: MILESTONE 5 COMPLETE: Tasks 17 and 18 validated via remote CI Runner (Path A) and integrated into main; cross-system deployment checklist in todo.md verified.
+- 2026-11-03T19:55:00Z — planner-agent-01: MILESTONE 6 KICKOFF: Scope defined and published across 4 Autonomous Reply-Timing Notification features (tasks 19-22: Alert Dispatcher Engine, API Alert Endpoints, Web Alert Settings UI, and Compose E2E Integration). Task 19 is Unclaimed (Ready); worker agents may claim.

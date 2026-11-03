@@ -31,6 +31,10 @@
   3. **Decoupled Worker Workflow**: Worker agents claim tasks, isolate execution in Git worktrees, perform Docker builds/tests, and hand off commits without co-author trailers. The Planner agent (`planner-agent-01`) pushes the feature branch to `origin`, monitors GitHub Actions CI on HEAD, merges validated PRs into `main`, pulls merged `origin/main` locally, and reconciles the coordination ledgers to unblock downstream tasks.
   4. **Path A Approved for Docker Validation**: Human operator approved remote GitHub Actions CI Runner (Path A). Configured `.github/workflows/ci.yml` with a dedicated `docker` job executing `Dockerfile.api` and `Dockerfile.web` image builds, `scripts/start.sh up`, gateway health checks, and `tests/e2e/` Compose test suite on Ubuntu runners, bypassing worker sandbox socket restrictions.
   5. **Milestone 5 Completed & Verified**: Remote GitHub Actions CI run [#41705797810](https://github.com/eeyung1/X-Reach/actions/runs/41705797810) completed with SUCCESS across all 6 test suites including the Docker Build & Compose Stack E2E job. `todo.md` cross-system deployment checklist verified. All 18 feature tasks merged and validated.
+- **2026-11-03**: Milestone 6 Scope Decisions Approved:
+  1. **Option 1 Selected**: Human operator selected Option 1 — Autonomous Reply-Timing Notification Alerts (Webhooks / Push).
+  2. **Milestone 6 Objectives**: Build an automated alert pipeline that detects newly scouted high-velocity viral root posts (<15m age, >600 views/min) matching author SimClusters or Semantic IDs, and immediately dispatches alerts to external channels (Discord, Slack, Generic Webhook) with HMAC signing and retry logic.
+  3. **Task Decomposition**: 4 tasks planned (Task 19: Alert Dispatcher Engine, Task 20: API Alert Endpoints, Task 21: Web Alert Settings UI, Task 22: Compose E2E Integration). Task 19 is open and ready for worker claim.
 
 
 
