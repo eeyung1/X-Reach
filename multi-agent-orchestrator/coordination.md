@@ -24,4 +24,7 @@
 
 ## Blockers and Proposed Decisions
 
+- **2026-11-03T13:03:27Z — Coordination-state discrepancy (worker report)**: `orchestrator --start/--complete` updated `agentmeeting.md`, worktrees, and `resolution.md`, but `state.json` still has empty claims/tasks and reports completed/blocked workers as ACTIVE. Backlog status cells also remain Unclaimed despite lifecycle evidence. ORCHESTRATOR should reconcile the machine authority before assigning overlapping work; existing feature commits/worktrees remain protected evidence.
+
 ## Automated Actions
+
