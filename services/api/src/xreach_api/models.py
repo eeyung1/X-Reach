@@ -153,7 +153,9 @@ class MultimodalOutput(BaseModel):
 class AnalyzeResponse(BaseModel):
     algorithmic_viability_score: float
     reach_potential_percentile: float | None = Field(default=None, ge=0, le=100)
-    reach_calibration_status: Literal["unavailable", "empirical", "log_normal"] = "unavailable"
+    reach_calibration_status: Literal["unavailable", "empirical", "log_normal"] = (
+        "unavailable"
+    )
     score: ScoreOutput
     placement_recommendation: dict[str, str]
     suggested_tweaks: list[str]
@@ -165,3 +167,9 @@ class AnalyzeResponse(BaseModel):
     video_duration_seconds: float | None = None
     quantizer_status: str | None = None
     propensity_status: str | None = None
+
+
+class RadarIngestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    events: list[dict[str, object]] = Field(min_length=1, max_length=500)

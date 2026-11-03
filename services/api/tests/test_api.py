@@ -5,8 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
-from xreach_api.main import create_app
 from xreach_api.calibration import ReachCalibrationConfig
+from xreach_api.main import create_app
 from xreach_api.multimodal import MediaUpload, MultimodalService
 from xreach_api.radar_stream import RadarEventBuffer, RadarSeedProducer
 from xreach_api.rust_scorer import RustScorer
@@ -277,9 +277,7 @@ def test_placement_returns_calibrated_percentile_for_recommended_surface():
     calibration = ReachCalibrationConfig(
         method="log_normal", log_mean=-2.0, log_std_dev=1.0
     )
-    response = client_with(
-        FakeRustScorer(), reach_calibration=calibration
-    ).post(
+    response = client_with(FakeRustScorer(), reach_calibration=calibration).post(
         "/api/v1/placement",
         json={
             "profile_predictions": {"share_via_copy_link": 0.1},
@@ -389,6 +387,45 @@ def test_radar_event_buffer_reports_dropped_subscriber_backlog():
     events.unsubscribe(subscriber)
 
 
+def test_radar_ingestion_requires_token_and_publishes_batch():
+    class PausedProducer:
+        async def run(self):
+            await asyncio.Event().wait()
+
+    events = RadarEventBuffer()
+    client = TestClient(
+        create_app(
+            radar_events=events,
+            radar_producer=PausedProducer(),
+            radar_ingest_token="secret",
+        )
+    )
+    batch = {
+        "events": [
+            {"tweet_id": "root-1", "simclusters": ["Technology"]},
+            {"tweet_id": "root-2", "simclusters": ["Sports"]},
+        ]
+    }
+
+    denied = client.post("/api/v1/radar/events", json=batch)
+    accepted = client.post(
+        "/api/v1/radar/events",
+        json=batch,
+        headers={"Authorization": "Bearer secret"},
+    )
+    subscriber, replay, _, _, _ = events.subscribe()
+    events.unsubscribe(subscriber)
+
+    assert denied.status_code == 401
+    assert accepted.status_code == 200
+    assert accepted.json() == {
+        "published": 2,
+        "first_event_id": 1,
+        "last_event_id": 2,
+    }
+    assert [event.payload["tweet_id"] for event in replay] == ["root-1", "root-2"]
+
+
 def test_radar_seed_producer_publishes_new_capture_seeds():
     class Provider:
         async def read_capture(self):
@@ -448,9 +485,7 @@ def test_radar_sse_stream_replays_events_and_sets_streaming_headers():
         )
     )
 
-    with client.stream(
-        "GET", "/api/v1/radar/stream?simcluster=technology"
-    ) as response:
+    with client.stream("GET", "/api/v1/radar/stream?simcluster=technology") as response:
         lines = iter(response.iter_lines())
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/event-stream")

@@ -1,6 +1,13 @@
 """REA-backed live radar for X-Reach."""
 
 from .cdp_client import ReaClient, ReaCommandError
+from .daemon import (
+    ApiEventSink,
+    CaptureFileSource,
+    DaemonCycle,
+    RadarDaemon,
+    ReaScenarioSource,
+)
 from .graphql_sniffer import GraphQLDocument, iter_graphql_documents
 from .seed_scout import ScoutConfig, SeedScout, ViralSeed
 from .simclusters import (
@@ -16,10 +23,15 @@ from .simclusters import (
 __all__ = [
     "ActiveSimCluster",
     "AlignedViralSeed",
+    "ApiEventSink",
+    "CaptureFileSource",
     "ClusterMatch",
+    "DaemonCycle",
     "GraphQLDocument",
+    "RadarDaemon",
     "ReaClient",
     "ReaCommandError",
+    "ReaScenarioSource",
     "ScoutConfig",
     "SeedScout",
     "SimClusterIndex",

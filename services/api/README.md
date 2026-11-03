@@ -59,6 +59,14 @@ and an explicit `reach_calibration_status` of `unavailable` with a null
 request; missing inference dependencies produce a 503 without preventing the
 API from starting or manual-prediction requests from working.
 
+## Radar daemon ingestion
+
+The standalone `xreach-radar daemon` process publishes seed batches to
+`POST /api/v1/radar/events`; the API stores them in the same bounded ring used by
+`GET /api/v1/radar/stream`. Set the same `XREACH_RADAR_INGEST_TOKEN` in both
+containers to require a bearer token. If the token is omitted, ingestion is
+unauthenticated and should only be exposed on a private container network.
+
 ## Reach calibration
 
 Set `XREACH_REACH_CALIBRATION_FILE` to a JSON calibration file to enable

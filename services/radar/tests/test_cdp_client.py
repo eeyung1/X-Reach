@@ -80,3 +80,21 @@ def test_invalid_inputs_never_launch_child():
                 "http://127.0.0.1:9222", "target", observation_ms=-1
             )
     run.assert_not_called()
+
+
+def test_capture_browser_scenario_uses_explicit_scenario_file(tmp_path):
+    scenario = tmp_path / "scenario.json"
+    scenario.write_text("{}", encoding="utf-8")
+    completed = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout='{"normalized_result": {}}', stderr=""
+    )
+    with patch("xreach_radar.cdp_client.subprocess.run", return_value=completed) as run:
+        result = ReaClient().capture_browser_scenario(scenario)
+
+    assert result == {"normalized_result": {}}
+    assert run.call_args.args[0] == (
+        "rea",
+        "capture-browser-scenario",
+        str(scenario),
+        "--json",
+    )

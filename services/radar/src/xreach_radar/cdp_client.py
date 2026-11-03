@@ -6,6 +6,7 @@ import json
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -76,6 +77,14 @@ class ReaClient:
             arguments.append("--include-json-body-shapes")
         arguments.append("--json")
         return self._run_json(arguments)
+
+    def capture_browser_scenario(self, scenario_path: str | Path) -> Mapping[str, Any]:
+        """Run one caller-authored REA browser scenario and return its evidence."""
+
+        path = Path(scenario_path)
+        if not path.is_file():
+            raise ValueError(f"REA scenario does not exist: {path}")
+        return self._run_json(("capture-browser-scenario", str(path), "--json"))
 
     def _run_json(self, arguments: Sequence[str]) -> Mapping[str, Any]:
         command = (*self._command, *arguments)
