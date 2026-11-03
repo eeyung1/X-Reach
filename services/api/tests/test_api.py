@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -7,6 +8,7 @@ from fastapi.testclient import TestClient
 from xreach_api.main import create_app
 from xreach_api.calibration import ReachCalibrationConfig
 from xreach_api.multimodal import MediaUpload, MultimodalService
+from xreach_api.radar_stream import RadarEventBuffer, RadarSeedProducer
 from xreach_api.rust_scorer import RustScorer
 
 
@@ -357,3 +359,104 @@ def test_calibration_config_rejects_invalid_reference_data(tmp_path: Path):
         assert "2 to 1000000" in str(error)
     else:
         raise AssertionError("invalid calibration configuration should be rejected")
+
+
+def test_radar_event_buffer_replays_filtered_history_and_signals_expiry():
+    events = RadarEventBuffer(capacity=2)
+    events.publish({"tweet_id": "one", "simclusters": ["Technology"]})
+    events.publish({"tweet_id": "two", "simclusters": ["Sports"]})
+    events.publish({"tweet_id": "three", "simclusters": ["Technology"]})
+
+    subscriber, replay, queue, history_lost, oldest_id = events.subscribe(
+        after_id=0, simclusters=["technology"]
+    )
+
+    assert [event.payload["tweet_id"] for event in replay] == ["three"]
+    assert queue.empty()
+    assert history_lost is True
+    assert oldest_id == 2
+    events.unsubscribe(subscriber)
+
+
+def test_radar_event_buffer_reports_dropped_subscriber_backlog():
+    events = RadarEventBuffer(subscriber_capacity=1)
+    subscriber, _, queue, _, _ = events.subscribe()
+    events.publish({"tweet_id": "one", "simclusters": []})
+    events.publish({"tweet_id": "two", "simclusters": []})
+
+    assert events.consume_dropped_through(subscriber) == 1
+    assert queue.get_nowait().event_id == 2
+    events.unsubscribe(subscriber)
+
+
+def test_radar_seed_producer_publishes_new_capture_seeds():
+    class Provider:
+        async def read_capture(self):
+            return {"new_capture": True}
+
+    class Scanner:
+        def scan(self, capture):
+            return [
+                {
+                    "tweet_id": "root-1",
+                    "impressions": 5_000,
+                    "replies": 2,
+                    "views_per_minute": 1_000.0,
+                    "simclusters": ["Technology"],
+                }
+            ]
+
+    async def run_until_published():
+        events = RadarEventBuffer()
+        producer = RadarSeedProducer(
+            events, Provider(), Scanner(), interval_seconds=0.1
+        )
+        task = asyncio.create_task(producer.run())
+        try:
+            for _ in range(100):
+                await asyncio.sleep(0.005)
+                subscriber, replay, _, _, _ = events.subscribe()
+                events.unsubscribe(subscriber)
+                if replay:
+                    return replay
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        raise AssertionError("radar producer did not publish its seed")
+
+    replay = asyncio.run(run_until_published())
+    assert replay[0].payload["tweet_id"] == "root-1"
+    assert replay[0].event_id == 1
+
+
+def test_radar_sse_stream_replays_events_and_sets_streaming_headers():
+    class PausedProducer:
+        async def run(self):
+            await asyncio.Event().wait()
+
+    events = RadarEventBuffer()
+    events.publish(
+        {"tweet_id": "root-1", "simclusters": ["Technology"], "views_per_minute": 900}
+    )
+    client = TestClient(
+        create_app(
+            radar_events=events,
+            radar_producer=PausedProducer(),
+        )
+    )
+
+    with client.stream(
+        "GET", "/api/v1/radar/stream?simcluster=technology"
+    ) as response:
+        lines = iter(response.iter_lines())
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert response.headers["cache-control"] == "no-cache, no-transform"
+        assert next(lines) == "retry: 3000"
+        assert next(lines) == ""
+        assert next(lines) == "id: 1"
+        assert next(lines) == "event: seed"
+        assert '"tweet_id":"root-1"' in next(lines)

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping
+from contextlib import asynccontextmanager, suppress
+from datetime import datetime, timezone
 from typing import Any, TypeVar
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ValidationError
+from starlette.responses import StreamingResponse
 from starlette.datastructures import UploadFile
 
 from .calibration import ReachCalibrationConfig
@@ -28,6 +32,12 @@ from .multimodal import (
     MultimodalUnavailable,
 )
 from .rust_scorer import RustScorer, ScorerUnavailable
+from .radar_stream import (
+    RadarEventBuffer,
+    RadarSeedProducer,
+    default_radar_producer,
+    encode_sse,
+)
 
 MAX_MEDIA_BYTES = 50 * 1024 * 1024
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -37,12 +47,31 @@ def create_app(
     scorer: RustScorer | None = None,
     multimodal: MultimodalBackend | None = None,
     reach_calibration: ReachCalibrationConfig | None = None,
+    radar_events: RadarEventBuffer | None = None,
+    radar_producer: RadarSeedProducer | None = None,
+    radar_heartbeat_seconds: float = 15.0,
 ) -> FastAPI:
+    if not 0.1 <= radar_heartbeat_seconds <= 300:
+        raise ValueError("radar heartbeat interval must be between 0.1 and 300 seconds")
     calibration = (
         reach_calibration
         if reach_calibration is not None
         else ReachCalibrationConfig.from_environment()
     )
+    event_buffer = radar_events or RadarEventBuffer()
+    producer = radar_producer or default_radar_producer(event_buffer)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        producer_task = asyncio.create_task(producer.run())
+        app.state.radar_producer_task = producer_task
+        try:
+            yield
+        finally:
+            producer_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await producer_task
+
     app = FastAPI(
         title="X-Reach API",
         version="0.1.0",
@@ -51,14 +80,99 @@ def create_app(
             "prediction heads with the Rust core. Reach percentiles are available "
             "when a historical score calibration is configured."
         ),
+        lifespan=lifespan,
     )
     app.state.scorer = scorer or RustScorer()
     app.state.multimodal = multimodal or MultimodalService()
     app.state.reach_calibration = calibration
+    app.state.radar_events = event_buffer
+    app.state.radar_producer = producer
+    app.state.radar_heartbeat_seconds = radar_heartbeat_seconds
 
     @app.get("/healthz")
     def health() -> dict[str, str]:
         return {"status": "ok", "scoring_engine": "rust-core"}
+
+    @app.get("/api/v1/radar/stream")
+    async def radar_stream(
+        request: Request,
+        simcluster: list[str] | None = Query(default=None),
+        after: int | None = Query(default=None, ge=0),
+        last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    ) -> StreamingResponse:
+        after_id = after
+        if last_event_id is not None:
+            try:
+                after_id = int(last_event_id)
+            except ValueError as error:
+                raise HTTPException(
+                    status_code=400, detail="Last-Event-ID must be a non-negative integer"
+                ) from error
+            if after_id < 0:
+                raise HTTPException(
+                    status_code=400, detail="Last-Event-ID must be a non-negative integer"
+                )
+        cluster_filters = tuple(
+            label.strip()
+            for group in (simcluster or ())
+            for label in group.split(",")
+            if label.strip()
+        )
+
+        async def stream_events():
+            subscriber, history, queue, history_lost, oldest_id = (
+                app.state.radar_events.subscribe(
+                    after_id=after_id, simclusters=cluster_filters
+                )
+            )
+            try:
+                yield "retry: 3000\n\n"
+                if history_lost:
+                    reset_id = max(0, (oldest_id or 1) - 1)
+                    reset = json.dumps(
+                        {"reason": "history_expired", "oldest_event_id": oldest_id},
+                        separators=(",", ":"),
+                    )
+                    yield f"id: {reset_id}\nevent: reset\ndata: {reset}\n\n"
+                for event in history:
+                    yield encode_sse(event)
+                while not await request.is_disconnected():
+                    try:
+                        event = await asyncio.wait_for(
+                            queue.get(), timeout=app.state.radar_heartbeat_seconds
+                        )
+                    except TimeoutError:
+                        heartbeat = datetime.now(timezone.utc).isoformat()
+                        yield f'event: heartbeat\ndata: {{"timestamp":"{heartbeat}"}}\n\n'
+                    else:
+                        dropped_through = app.state.radar_events.consume_dropped_through(
+                            subscriber
+                        )
+                        if dropped_through is not None:
+                            notice = json.dumps(
+                                {
+                                    "reason": "subscriber_backlog_expired",
+                                    "resume_after_event_id": dropped_through,
+                                },
+                                separators=(",", ":"),
+                            )
+                            yield (
+                                f"id: {dropped_through}\nevent: reset\n"
+                                f"data: {notice}\n\n"
+                            )
+                        yield encode_sse(event)
+            finally:
+                app.state.radar_events.unsubscribe(subscriber)
+
+        return StreamingResponse(
+            stream_events(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
 
     @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
     async def analyze(request: Request) -> AnalyzeResponse:
