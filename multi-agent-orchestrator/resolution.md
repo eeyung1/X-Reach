@@ -456,3 +456,18 @@ Append-only completed-work evidence.
 - GitHub Actions CI Run: 41709367253
 - CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone, API Tests, Radar Tests [test_alerts.py 6/6 passed], Docker Build & Compose Stack E2E)
 - Integrated into main: commit via no-ff merge.
+
+## task-api-alert-endpoints — token-api-alert-endpoints-1793737200
+- Session: Codex-20261103-apialerts-4c8e6f21-20261103-e3e15bd4
+- State: COMPLETE
+- Validation: python3 -m compileall -q services/api/src/xreach_api services/api/tests/test_api.py
+- Evidence: Syntax and AST compilation passed; unit test suite tests/test_api.py extended with alert config, test, and background dispatching tests.
+- Recorded UTC: 2026-11-03T20:28:31Z
+
+### task-api-alert-endpoints integration evidence
+- Feature: task-api-alert-endpoints
+- Planner / Integrator: planner-agent-01
+- Remote Branch: origin/agent/task-api-alert-endpoints (HEAD 5c09b6d680d71f3437c23cc4e6f44735249c3145)
+- GitHub Actions CI Run: 41715139895
+- CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone, API Tests [26/26 passed], Radar Tests, Docker Build & Compose Stack E2E)
+- Integrated into main: commit via no-ff merge.

@@ -19,6 +19,7 @@
 | Codex-20261103-b7e4-20261103-3a2f42ef | worker | COMPLETE | 2026-11-03T15:53:30Z | task-web-reply-composer | - | codex-b7e4-web-reply-composer-20261103 |
 | Codex-20261103-dockerverify-6f42c9a1-20261103-e8db27a1 | worker | BLOCKED | 2026-11-03T18:48:48Z | task-docker-verify-images | - | token-docker-verify-1793731967 |
 | Codex-20261103-alertdispatcher-91ab73de-20261103-764d9791 | worker | COMPLETE | 2026-11-03T20:00:29Z | task-alert-dispatcher-engine | - | token-alert-dispatcher-1793735100 |
+| Codex-20261103-apialerts-4c8e6f21-20261103-e3e15bd4 | worker | COMPLETE | 2026-11-03T20:28:31Z | task-api-alert-endpoints | - | token-api-alert-endpoints-1793737200 |
 
 ## Feature Backlog
 
@@ -43,8 +44,8 @@
 | 17 | task-docker-verify-images | docker/, data/ | Complete (CI Verified) | planner-agent-01 | - | Build and verify API (Dockerfile.api) and Web (Dockerfile.web) container images; test container health check endpoints | GitHub Actions run 41705797810 |
 | 18 | task-compose-live-e2e | scripts/, tests/e2e/, todo.md | Complete (CI Verified) | planner-agent-01 | task-docker-verify-images | Execute Compose stack with scripts/start.sh up; verify Nginx gateway on port 8080; run scripts/e2e.sh pytest suite; update todo.md cross-system checklist | GitHub Actions run 41705797810 |
 | 19 | task-alert-dispatcher-engine | services/radar/, services/api/ | Complete (Merged) | Codex-20261103-alertdispatcher-91ab73de-20261103-764d9791 | - | Autonomous reply-timing alert rules engine, multi-target payload formatters (Discord, Slack, Generic JSON), async webhook dispatcher with retries and HMAC signatures | GitHub Actions run 41709367253 |
-| 20 | task-api-alert-endpoints | services/api/ | Unclaimed (Ready) | - | - | FastAPI endpoints for webhook alert configuration and immediate testing (POST /api/v1/alerts/test); automatic background trigger on radar seed ingestion | pytest services/api/tests/ |
-| 21 | task-web-alert-settings | web/ | Unclaimed | - | task-api-alert-endpoints | Web drop-zone UI panel for Autonomous Reply-Timing Alerts: webhook destination configuration, velocity/age thresholds, test trigger button, and status indicators | npm --prefix web run build |
+| 20 | task-api-alert-endpoints | services/api/ | Complete (Merged) | Codex-20261103-apialerts-4c8e6f21-20261103-e3e15bd4 | - | FastAPI endpoints for webhook alert configuration and immediate testing (POST /api/v1/alerts/test); automatic background trigger on radar seed ingestion | GitHub Actions run 41715139895 |
+| 21 | task-web-alert-settings | web/ | Unclaimed (Ready) | - | - | Web drop-zone UI panel for Autonomous Reply-Timing Alerts: webhook destination configuration, velocity/age thresholds, test trigger button, and status indicators | npm --prefix web run build |
 | 22 | task-alert-compose-e2e | tests/e2e/, docker-compose.yml, scripts/ | Unclaimed | - | task-alert-dispatcher-engine, task-api-alert-endpoints, task-web-alert-settings | End-to-end integration test verifying live radar opportunity alerts trigger and dispatch to webhook listener through Compose stack | pytest tests/e2e/ -v |
 
 ## Atomic Claims
@@ -108,3 +109,6 @@
 - 2026-11-03T20:00:29Z — Codex-20261103-alertdispatcher-91ab73de-20261103-764d9791: HANDOFF: commit 0a19fdc on branch agent/task-alert-dispatcher-engine ready for publication.
 - 2026-11-03T20:09:49Z — planner-agent-01: CI VERIFIED: GitHub Actions run 41709367253 for task-alert-dispatcher-engine passed on HEAD 0a19fdc. Merged to main.
 - 2026-11-03T20:10:00Z — planner-agent-01: All upstream dependencies satisfied for task-api-alert-endpoints. Marked Unclaimed (Ready). Worker agents may claim.
+- 2026-11-03T20:42:02Z — Codex-20261103-apialerts-4c8e6f21-20261103-e3e15bd4: HANDOFF: commit 5c09b6d on branch agent/task-api-alert-endpoints ready for publication.
+- 2026-11-03T20:46:38Z — planner-agent-01: CI VERIFIED: GitHub Actions run 41715139895 for task-api-alert-endpoints passed on HEAD 5c09b6d. Merged to main.
+- 2026-11-03T20:47:00Z — planner-agent-01: All upstream dependencies satisfied for task-web-alert-settings. Marked Unclaimed (Ready). Worker agents may claim.
