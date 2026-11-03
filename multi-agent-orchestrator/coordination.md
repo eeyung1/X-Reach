@@ -30,6 +30,8 @@
 
 ## Blockers and Proposed Decisions
 
+- **2026-11-03T14:47:00Z — Milestone 3 scope sequencing blocker RESOLVED**: `task-reach-calibration` has completed, passed remote CI (run 41656981507), and merged into `main`. The `services/api/` scope is cleanly unblocked on `main` and claimed by `Codex-20261103-b7e4-20261103-8f5600ff` for `task-radar-sse-stream`.
+
 - **2026-11-03T13:03:27Z — Coordination-state discrepancy (worker report)**: `orchestrator --start/--complete` updated `agentmeeting.md`, worktrees, and `resolution.md`, but `state.json` still has empty claims/tasks and reports completed/blocked workers as ACTIVE. Backlog status cells also remain Unclaimed despite lifecycle evidence. ORCHESTRATOR should reconcile the machine authority before assigning overlapping work; existing feature commits/worktrees remain protected evidence.
 
 ## Automated Actions

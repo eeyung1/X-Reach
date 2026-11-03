@@ -198,3 +198,30 @@ Append-only completed-work evidence.
 - GitHub Actions CI Run: 41653677068
 - CI Conclusion: SUCCESS (Rust bridge build + 12/12 FastAPI multimodal pytest tests passed)
 - Integrated into main: commit c89d40b via no-ff merge.
+
+## task-reach-calibration — codex-b7e4-reach-calibration-20261103
+- Session: Codex-20261103-b7e4-20261103-1e15e006
+- State: BLOCKED
+- Validation: pytest services/api/tests/
+- Evidence: 
+- Recorded UTC: 2026-11-03T14:44:40Z
+
+### task-reach-calibration handoff evidence
+- Feature/session: task-reach-calibration / Codex-20261103-b7e4-20261103-1e15e006.
+- Branch/worktree: agent/task-reach-calibration at .agent-worktrees/task-reach-calibration.
+- Commit: 520871aacd97f12f5080cfa1c13039538800a441.
+- Files: crates/xreach-core/src/lib.rs; services/api/rust-bridge/src/main.rs; services/api/src/xreach_api/{calibration,main,models,rust_scorer}.py; services/api/tests/test_api.py; services/api/README.md.
+- Implementation: empirical percentile ranking with interpolation and tie handling; log-normal fitting and CDF; Rust bridge output; optional API calibration file via XREACH_REACH_CALIBRATION_FILE; analysis and placement response percentiles; configuration validation and regression cases.
+- Validation passed: Python compileall; Python AST and Cargo/Python TOML parsing; calibration config smoke checks; git diff --check.
+- Acceptance validation blocked: `cargo test --manifest-path crates/xreach-core/Cargo.toml` (cargo not found); `pytest services/api/tests/ -q` (pytest not found). `uv run --project services/api --extra test pytest services/api/tests/ -q` could not fetch httpx because PyPI DNS lookup failed.
+- Remaining gates: run the Rust and API acceptance suites in CI or an environment with Cargo and Python test dependencies; review the empirical sample source before presenting its score percentile as reach potential.
+- Next action: Planner/Integrator publishes the branch, validates the exact commit, and integrates if checks pass.
+
+
+## task-reach-calibration integration — 2026-11-03T14:47:00Z
+- Integrator: planner-agent-01
+- Remote Branch: origin/agent/task-reach-calibration
+- Remote Commit: 520871aacd97f12f5080cfa1c13039538800a441
+- GitHub Actions CI Run: 41656981507
+- CI Conclusion: SUCCESS (Rust core percentile tests + Rust bridge + FastAPI calibration pytest suite passed)
+- Integrated into main: commit 8778c1f via no-ff merge.
