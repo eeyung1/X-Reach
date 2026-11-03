@@ -3,7 +3,7 @@
     "repository_id": "local-git:/home/recoding/Projects/X/X-Reach#/home/recoding/Projects/X/X-Reach/.git",
     "protocol": "orchestrator/v1",
     "schema": 4,
-    "generation": 24,
+    "generation": 25,
     "enrollment": "NATIVE",
     "provenance": "Human operator initialized project coordination",
     "enrolled_utc": "2026-11-03T12:27:34Z"
@@ -36,8 +36,8 @@
     "Codex-20261103-b7e4-20261103-8f5600ff": {
       "id": "Codex-20261103-b7e4-20261103-8f5600ff",
       "role": "worker",
-      "state": "ACTIVE",
-      "generation": 23
+      "state": "COMPLETE",
+      "generation": 25
     },
     "GPT56Sol-20261103-4f2c-20261103-b1f96458": {
       "id": "GPT56Sol-20261103-4f2c-20261103-b1f96458",
@@ -226,7 +226,7 @@
       "id": "23-register-session",
       "actor": "Codex-20261103-b7e4-20261103-8f5600ff",
       "operation": "register-session",
-      "generation": 24,
+      "generation": 25,
       "utc": "2026-11-03T14:45:14Z"
     },
     {
@@ -235,6 +235,13 @@
       "operation": "integration-complete",
       "generation": 24,
       "utc": "2026-11-03T14:47:00Z"
+    },
+    {
+      "id": "25-task-radar-sse-stream-integrated",
+      "actor": "planner-agent-01",
+      "operation": "integration-complete",
+      "generation": 25,
+      "utc": "2026-11-03T14:53:45Z"
     }
   ]
 }

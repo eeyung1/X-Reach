@@ -225,3 +225,34 @@ Append-only completed-work evidence.
 - GitHub Actions CI Run: 41656981507
 - CI Conclusion: SUCCESS (Rust core percentile tests + Rust bridge + FastAPI calibration pytest suite passed)
 - Integrated into main: commit 8778c1f via no-ff merge.
+
+## task-radar-sse-stream — codex-b7e4-radar-sse-20261103
+- Session: Codex-20261103-b7e4-20261103-8f5600ff
+- State: BLOCKED
+- Validation: pytest services/api/tests/
+- Evidence: 
+- Recorded UTC: 2026-11-03T14:49:35Z
+
+### task-radar-sse-stream handoff evidence
+- Feature/session: task-radar-sse-stream / Codex-20261103-b7e4-20261103-8f5600ff.
+- Branch/worktree: agent/task-radar-sse-stream at .agent-worktrees/task-radar-sse-stream.
+- Commit: 54ccc4f4fe31e09d7633b3f2cfb331a6fec3fa68.
+- Files: services/api/src/xreach_api/radar_stream.py; services/api/src/xreach_api/main.py; services/api/tests/test_api.py; services/api/README.md.
+- Implementation: bounded in-memory SSE event ring with replay IDs and overflow/reset notices; SimCluster filters; heartbeats; lifespan-managed seed producer polling refreshed REA/HAR capture snapshots; deduplicated root-seed updates.
+- Validation passed: Python compileall and AST/TOML checks; direct async smoke checks for ring replay, filtering, overflow markers, producer publishing, and default producer wiring; git diff --check.
+- Acceptance validation blocked: `pytest services/api/tests/ -q` and orchestrator validation could not start (`pytest` not found). `uv run --project services/api --extra test pytest services/api/tests/ -q` failed fetching `pydantic` because PyPI DNS resolution failed.
+- Remaining gates: run API tests, including the streaming response test, in CI or an environment with the API test dependencies installed.
+- Next action: Planner/Integrator publishes the branch, validates the exact commit, and integrates if checks pass.
+
+### task-radar-sse-stream integration and validation update
+- Main advanced after the worker branch was created: task-reach-calibration is integrated at 3ff4974907dbfe1986f77680e772a2d344baa660. The radar commit remains based on f39fe8ab1a94740d4e5b5a043acce1c18020508c and changes overlapping API files. Planner should rebase/review it after the calibration integration.
+- Additional required command `pytest services/radar/tests/ -q` could not start (`pytest` not found).
+
+
+## task-radar-sse-stream integration — 2026-11-03T14:53:45Z
+- Integrator: planner-agent-01
+- Remote Branch: origin/agent/task-radar-sse-stream
+- Remote Commit: 093c4d5c3cfcf9c932eefd78b8ca31cd3c46d5f2
+- GitHub Actions CI Run: 41658112152
+- CI Conclusion: SUCCESS (FastAPI SSE streaming tests + event buffer replay + producer tests passed)
+- Integrated into main: commit aa8f475 via no-ff merge.

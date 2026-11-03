@@ -36,3 +36,9 @@
 
 ## Automated Actions
 
+
+- **2026-11-03T14:50:20Z — task-radar-sse-stream integration note**: commit 54ccc4f4fe31e09d7633b3f2cfb331a6fec3fa68 is based on main f39fe8ab1a94740d4e5b5a043acce1c18020508c. Main now contains task-reach-calibration integration at 3ff4974907dbfe1986f77680e772a2d344baa660; rebase/review the radar branch against that head before publication because both changes touch services/api/src/xreach_api/main.py and services/api/README.md. Both API and radar pytest commands were unavailable in the worker environment.
+
+- **2026-11-03T14:50:29Z — radar claim reconciliation**: the worker release command cleared its claim, but `agentmeeting.md` still shows the task row as Claimed while this session is BLOCKED. Reconcile the backlog row before assigning dependent task 11.
+
+- **2026-11-03T14:50:52Z — task-radar-sse-stream publication conflict observed**: the task worktree is now detached at main 3ff4974907dbfe1986f77680e772a2d344baa660 with unresolved index conflicts in services/api/src/xreach_api/main.py and services/api/tests/test_api.py after the task9 merge. The worker claim was released; preserve the integration worktree and have the Planner/Integrator resolve these conflicts. The worker did not modify the integration worktree after handoff.
