@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# X-Reach Orchestrator Bridge
+ORCHESTRATOR_BIN="/home/recoding/Projects/multi-agent-orchestrator/bin/orchestrator"
+
+if [ ! -f "$ORCHESTRATOR_BIN" ]; then
+    echo "Error: Orchestrator binary not found at $ORCHESTRATOR_BIN" >&2
+    exit 1
+fi
+
+exec "$ORCHESTRATOR_BIN" "$@"
