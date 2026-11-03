@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
+import os
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
@@ -12,8 +14,8 @@ from typing import Any, TypeVar
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ValidationError
-from starlette.responses import StreamingResponse
 from starlette.datastructures import UploadFile
+from starlette.responses import StreamingResponse
 
 from .calibration import ReachCalibrationConfig
 from .models import (
@@ -23,6 +25,7 @@ from .models import (
     CandidateInput,
     MultimodalOutput,
     PlacementRequest,
+    RadarIngestRequest,
     ScoreOutput,
 )
 from .multimodal import (
@@ -31,13 +34,13 @@ from .multimodal import (
     MultimodalService,
     MultimodalUnavailable,
 )
-from .rust_scorer import RustScorer, ScorerUnavailable
 from .radar_stream import (
     RadarEventBuffer,
     RadarSeedProducer,
     default_radar_producer,
     encode_sse,
 )
+from .rust_scorer import RustScorer, ScorerUnavailable
 
 MAX_MEDIA_BYTES = 50 * 1024 * 1024
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -50,6 +53,7 @@ def create_app(
     radar_events: RadarEventBuffer | None = None,
     radar_producer: RadarSeedProducer | None = None,
     radar_heartbeat_seconds: float = 15.0,
+    radar_ingest_token: str | None = None,
 ) -> FastAPI:
     if not 0.1 <= radar_heartbeat_seconds <= 300:
         raise ValueError("radar heartbeat interval must be between 0.1 and 300 seconds")
@@ -88,6 +92,11 @@ def create_app(
     app.state.radar_events = event_buffer
     app.state.radar_producer = producer
     app.state.radar_heartbeat_seconds = radar_heartbeat_seconds
+    app.state.radar_ingest_token = (
+        radar_ingest_token
+        if radar_ingest_token is not None
+        else os.environ.get("XREACH_RADAR_INGEST_TOKEN")
+    ) or None
 
     @app.get("/healthz")
     def health() -> dict[str, str]:
@@ -106,11 +115,13 @@ def create_app(
                 after_id = int(last_event_id)
             except ValueError as error:
                 raise HTTPException(
-                    status_code=400, detail="Last-Event-ID must be a non-negative integer"
+                    status_code=400,
+                    detail="Last-Event-ID must be a non-negative integer",
                 ) from error
             if after_id < 0:
                 raise HTTPException(
-                    status_code=400, detail="Last-Event-ID must be a non-negative integer"
+                    status_code=400,
+                    detail="Last-Event-ID must be a non-negative integer",
                 )
         cluster_filters = tuple(
             label.strip()
@@ -145,8 +156,8 @@ def create_app(
                         heartbeat = datetime.now(timezone.utc).isoformat()
                         yield f'event: heartbeat\ndata: {{"timestamp":"{heartbeat}"}}\n\n'
                     else:
-                        dropped_through = app.state.radar_events.consume_dropped_through(
-                            subscriber
+                        dropped_through = (
+                            app.state.radar_events.consume_dropped_through(subscriber)
                         )
                         if dropped_through is not None:
                             notice = json.dumps(
@@ -173,6 +184,38 @@ def create_app(
                 "Connection": "keep-alive",
             },
         )
+
+    @app.post("/api/v1/radar/events")
+    def ingest_radar_events(
+        batch: RadarIngestRequest,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        expected = app.state.radar_ingest_token
+        if expected is not None:
+            supplied = (
+                authorization.removeprefix("Bearer ")
+                if authorization and authorization.startswith("Bearer ")
+                else ""
+            )
+            if not supplied or not hmac.compare_digest(supplied, expected):
+                raise HTTPException(
+                    status_code=401, detail="invalid radar ingestion token"
+                )
+        for payload in batch.events:
+            tweet_id = str(payload.get("tweet_id", "")).strip()
+            if not tweet_id:
+                raise HTTPException(
+                    status_code=422,
+                    detail="each radar event must include a non-empty tweet_id",
+                )
+        published = [
+            app.state.radar_events.publish(payload) for payload in batch.events
+        ]
+        return {
+            "published": len(published),
+            "first_event_id": published[0].event_id,
+            "last_event_id": published[-1].event_id,
+        }
 
     @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
     async def analyze(request: Request) -> AnalyzeResponse:
@@ -264,12 +307,8 @@ def create_app(
             has_untrusted_external_url=data.direct_root_reply_has_untrusted_external_url,
             **common,
         )
-        profile_result = _score(
-            app.state.scorer, profile, app.state.reach_calibration
-        )
-        reply_result = _score(
-            app.state.scorer, root_reply, app.state.reach_calibration
-        )
+        profile_result = _score(app.state.scorer, profile, app.state.reach_calibration)
+        reply_result = _score(app.state.scorer, root_reply, app.state.reach_calibration)
         if profile_result["dropped_by"] and reply_result["dropped_by"]:
             surface = "NO_SAFE_SURFACE"
             reasoning = "Both placement candidates trigger visibility drops; revise the draft before posting."
@@ -288,7 +327,9 @@ def create_app(
         recommended_result = (
             reply_result
             if surface == "DIRECT_ROOT_REPLY"
-            else profile_result if surface == "PROFILE_POST" else None
+            else profile_result
+            if surface == "PROFILE_POST"
+            else None
         )
         reach_percentile, reach_status = (
             _reach_output(recommended_result)
@@ -313,6 +354,7 @@ def create_app(
                 },
             },
         }
+
     return app
 
 

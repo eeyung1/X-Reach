@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
+import logging
+import os
 import sys
 from collections.abc import Sequence
 from dataclasses import asdict
@@ -11,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .cdp_client import ReaClient, ReaCommandError
+from .daemon import daemon_from_environment, run_daemon
 from .seed_scout import ScoutConfig, SeedScout
 from .simclusters import SimClusterIndex, SimClusterScout, semantic_id
 
@@ -47,6 +51,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=datetime.fromisoformat,
         help="timezone-aware ISO timestamp used for reproducible scouting",
     )
+
+    daemon = subcommands.add_parser(
+        "daemon", help="continuously ingest captures into the API radar stream"
+    )
+    daemon.add_argument("--capture", type=Path, action="append", default=[])
+    daemon.add_argument("--rea-scenario", type=Path)
+    daemon.add_argument("--rea-command", default="rea")
+    daemon.add_argument("--api-url")
+    daemon.add_argument("--api-token")
+    daemon.add_argument("--poll-seconds", type=float)
+    daemon.add_argument("--once", action="store_true")
     return parser
 
 
@@ -61,6 +76,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                 allowed_origins=arguments.allowed_origin,
             )
             _print_json(result)
+            return 0
+
+        if arguments.command == "daemon":
+            logging.basicConfig(
+                level=os.environ.get("XREACH_LOG_LEVEL", "INFO").upper()
+            )
+            daemon = daemon_from_environment(
+                capture_paths=arguments.capture,
+                scenario_path=arguments.rea_scenario,
+                rea_command=(arguments.rea_command,),
+                api_url=arguments.api_url,
+                api_token=arguments.api_token,
+                poll_seconds=arguments.poll_seconds,
+            )
+            cycle = asyncio.run(run_daemon(daemon, once=arguments.once))
+            if cycle is not None:
+                _print_json(asdict(cycle))
             return 0
 
         capture = json.loads(arguments.capture.read_text(encoding="utf-8"))
@@ -96,6 +128,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ValueError,
         json.JSONDecodeError,
         ReaCommandError,
+        RuntimeError,
     ) as error:
         print(str(error), file=sys.stderr)
         return 2
