@@ -4,7 +4,7 @@
 
 | Agent/session ID | Role | Status | Heartbeat UTC | Feature | Branch/worktree | Claim reference |
 | --- | --- | --- | --- | --- | --- | --- |
-| planner-agent-01 | planner | ACTIVE | 2026-11-03T15:53:30Z | planning-and-integration | - | orchestrator-planner |
+| planner-agent-01 | planner | ACTIVE | 2026-11-03T16:09:00Z | planning-and-integration | - | orchestrator-planner |
 | Codex-20261103-b7e4-20261103-1dabdac6 | worker | COMPLETE | 2026-11-03T13:11:15Z | task-rust-core | - | codex-b7e4-rust-core-20261103 |
 | GPT56Sol-20261103-4f2c-20261103-b1f96458 | worker | COMPLETE | 2026-11-03T13:13:30Z | task-rea-scout | - | gpt56sol-4f2c-rea-scout-20261103 |
 | Codex-20261103-b7e4-20261103-8a8d02b1 | worker | COMPLETE | 2026-11-03T13:11:34Z | task-web-dropzone | - | codex-b7e4-web-dropzone-20261103 |
@@ -34,6 +34,10 @@
 | 10 | task-radar-sse-stream | services/api/, services/radar/ | Complete (Merged) | Codex-20261103-b7e4-20261103-8f5600ff | - | FastAPI SSE endpoint GET /api/v1/radar/stream with in-memory ring buffer, heartbeats, SimCluster filtering, and background seed producer | pytest services/api/tests/ && pytest services/radar/tests/ |
 | 11 | task-web-radar-dashboard | web/ | Complete (Merged) | Codex-20261103-b7e4-20261103-b0d8d2fb | task-radar-sse-stream | Real-time "Live Radar Opportunities" stream panel in Next.js dropzone UI with SSE connection, freshness timers, and velocity indicators | npm --prefix web run build |
 | 12 | task-web-reply-composer | web/ | Complete (Merged) | Codex-20261103-b7e4-20261103-3a2f42ef | task-web-radar-dashboard, task-reach-calibration | One-Click Direct Reply Targeting workflow: pre-fills conversation context, verifies in_reply_to_tweet_id == conversation_id, and evaluates comparative advantage score | npm --prefix web run build |
+| 13 | task-docker-services | services/api/, crates/xreach-core/, docker/ | Unclaimed (Ready) | - | - | Multi-stage Dockerfile for FastAPI + Rust scoring engine with OpenCLIP multimodal support, volume mounting, and health checks | docker build -f docker/Dockerfile.api . || pytest services/api/tests/ |
+| 14 | task-docker-web | web/, docker/ | Unclaimed (Ready) | - | - | Multi-stage standalone Dockerfile for Next.js 14 web dropzone UI with optimized node runtime and env configuration | npm --prefix web run build |
+| 15 | task-radar-daemon-runner | services/radar/, services/api/ | Unclaimed (Ready) | - | - | Background container runner daemon for REA radar supporting offline HAR/CDP replay and live timeline ingestion | pytest services/radar/tests/ |
+| 16 | task-compose-e2e-stack | docker-compose.yml, scripts/, tests/e2e/ | Unclaimed | - | task-docker-services, task-docker-web, task-radar-daemon-runner | Unified docker-compose.yml stack orchestrating API, web, and radar daemon with model cache volumes, start script, and E2E verification | docker compose config && pytest tests/e2e/ || pytest services/api/tests/ |
 
 ## Atomic Claims
 
@@ -67,3 +71,4 @@
 - 2026-11-03T15:50:29Z — Codex-20261103-b7e4-20261103-3a2f42ef: HANDOFF: commit 0ccc29f95fca46cc9ecde9f07d3de69f15afd563 on branch agent/task-web-reply-composer ready for publication.
 - 2026-11-03T15:52:42Z — planner-agent-01: CI VERIFIED: GitHub Actions run 41668260854 for task-web-reply-composer passed on HEAD 0ccc29f. Merged to main.
 - 2026-11-03T15:53:30Z — planner-agent-01: MILESTONE 3 COMPLETE: All 4 backlog features validated in remote CI and integrated into main.
+- 2026-11-03T16:09:00Z — planner-agent-01: MILESTONE 4 KICKOFF: Scope defined and published across 4 containerization and runtime tasks (Docker API service, Docker Web service, Radar daemon runner, and Compose E2E stack). Workers may claim eligible unblocked tasks.
