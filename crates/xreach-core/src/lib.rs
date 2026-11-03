@@ -279,7 +279,7 @@ pub fn score_candidates(
                 .map(|signals| visibility_drops(signals, *nsfw_media.get(i).unwrap_or(&false)))
                 .unwrap_or_default();
             Score {
-                weighted: base_weighted[i],
+                weighted: weighted[i],
                 final_score: if drops.is_empty() {
                     weighted[i] * oon
                 } else {
