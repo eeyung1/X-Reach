@@ -1,0 +1,10 @@
+[package]
+name = "xreach-core"
+version = "0.1.0"
+edition = "2021"
+description = "Phoenix value-model scoring and visibility-filtering primitives for X-Reach"
+license = "MIT"
+
+[lib]
+name = "xreach_core"
+path = "src/lib.rs"
