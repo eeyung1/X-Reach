@@ -55,3 +55,25 @@ Daemon defaults can be supplied with `XREACH_RADAR_CAPTURE_FILE`,
 response bodies; passive `inspect-web-page` shapes alone cannot establish tweet
 values. SIGTERM/SIGINT stop the polling loop cleanly. Capture files are bounded
 to 25 MB and only replayed again after their size or modification time changes.
+
+## Alert rules and webhooks
+
+`AlertRuleEngine` evaluates radar seed mappings against velocity, freshness,
+and optional SimCluster thresholds. Matching seeds become `AlertEvent` values.
+`WebhookDispatcher` asynchronously delivers events to generic JSON, Discord,
+or Slack incoming webhooks. Each request includes an
+`X-XReach-Signature: sha256=...` HMAC-SHA256 header over the exact JSON body.
+Delivery retries transient failures with bounded exponential backoff; client
+errors are returned as failed deliveries without retrying.
+
+```python
+from xreach_radar.alerts import AlertRule, AlertRuleEngine, WebhookDispatcher, WebhookTarget
+
+engine = AlertRuleEngine([AlertRule("fast-tech", 500, 30, frozenset({"Technology"}))])
+dispatcher = WebhookDispatcher([
+    WebhookTarget("https://hooks.example/alerts", "shared-secret", format="slack")
+])
+events = engine.evaluate(seed)
+for event in events:
+    await dispatcher.dispatch(event)
+```
