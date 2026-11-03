@@ -18,6 +18,11 @@
 | 2 | task-rea-scout | services/radar/ | Complete (Merged) | GPT56Sol-20261103-4f2c-20261103-b1f96458 | - | CLI subprocess runner for rea inspect-web-page and GraphQL timeline capture to detect viral root seeds (<30 min) in SimClusters | pytest services/radar/tests/ |
 | 3 | task-web-dropzone | web/ | Complete (Merged) | Codex-20261103-b7e4-20261103-8a8d02b1 | - | Next.js + Tailwind CSS drop-zone UI supporting text, memes, short videos, displaying Viability Score, Reach %, and placement advisor | npm --prefix web run build |
 | 4 | task-python-api | services/api/ | Complete (Merged) | Worker-Python-20261103-api | - | FastAPI backend exposing /api/v1/analyze and /api/v1/placement calling the Rust core scoring engine | pytest services/api/tests/ |
+| 5 | task-multimodal-extractor | services/multimodal/ | Unclaimed | - | - | OpenCLIP ViT-B/32 extractor and 6-level RVQ (6x256) quantizer; extracts text/image/video keyframe features and infers Phoenix action propensities | pytest services/multimodal/tests/ |
+| 6 | task-web-multimodal-client | web/ | Unclaimed | - | - | Upgrade Next.js Drop-Zone UI with direct multipart upload to /api/v1/analyze, displaying live Semantic ID badges, keyframe preview, and placement advice | npm --prefix web run build |
+| 7 | task-radar-simclusters | services/radar/ | Unclaimed | - | - | Map extracted Semantic IDs to matching active SimClusters; query and return live matching viral root tweets with high impression velocity | pytest services/radar/tests/ |
+| 8 | task-api-integration | services/api/ | Unclaimed | - | task-multimodal-extractor | Connect FastAPI /api/v1/analyze to services/multimodal for zero-configuration media analysis without raw manual caller prediction JSON | pytest services/api/tests/ |
+
 
 ## Atomic Claims
 

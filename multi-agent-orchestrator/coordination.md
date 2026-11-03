@@ -20,6 +20,12 @@
   1. **Scoring Engine**: Option B — Rust core library (`crates/xreach-core`) providing Phoenix Value Model arithmetic and Visibility Filtering checks, exposed via Python (`services/api`).
   2. **Frontend UI**: Next.js + Tailwind CSS web drop-zone (`web/`) with multimodal drag-and-drop analysis.
   3. **REA Integration**: Subprocess CLI runner (`services/radar`) invoking `rea inspect-web-page` and parsing GraphQL timeline captures.
+- **2026-11-03**: Milestone 2 Scope Decisions Approved:
+  1. **Multimodal Core**: Local vision-language pipeline using OpenCLIP (ViT-B/32) and a 6-level Residual Vector Quantizer (RVQ: $6 \times 256$ codebooks) in `services/multimodal/` to automatically generate action propensities and Semantic IDs.
+  2. **Video Analysis Strategy**: Keyframe extraction & pacing (hook frame 0–2s, midpoint, climax) combined with duration metadata to predict `video_open`, continuation seconds, and dwell time.
+  3. **End-to-End Vertical Slice**: Integrate the multimodal pipeline through FastAPI all the way into the Next.js drop-zone UI for live drag-and-drop draft analysis.
+  4. **Radar SimCluster Alignment**: Map Semantic IDs directly to active SimClusters in `services/radar/` to scout matching viral root posts.
+
 
 
 ## Blockers and Proposed Decisions
