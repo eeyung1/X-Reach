@@ -19,7 +19,8 @@ fi
 case "$ACTION" in
   up)
     mkdir -p "${XREACH_DATA_DIR:-$ROOT_DIR/data}"
-    docker compose up --build --detach --wait "$@"
+    chmod 777 "${XREACH_DATA_DIR:-$ROOT_DIR/data}" 2>/dev/null || true
+    docker compose up --build --detach --wait --wait-timeout 180 "$@"
     ;;
   down)
     docker compose down "$@"

@@ -115,7 +115,17 @@ jobs:
       - name: Build Web Container Image
         run: docker build -f docker/Dockerfile.web -t x-reach-web:local .
       - name: Launch Compose Stack
-        run: ./scripts/start.sh up
+        run: |
+          mkdir -p data && chmod 777 data || true
+          ./scripts/start.sh up || {
+            echo "::group::docker compose ps -a"
+            docker compose ps -a
+            echo "::endgroup::"
+            echo "::group::docker compose logs"
+            docker compose logs
+            echo "::endgroup::"
+            exit 1
+          }
       - name: Verify Gateway Health
         run: |
           curl -f http://127.0.0.1:8080/healthz
