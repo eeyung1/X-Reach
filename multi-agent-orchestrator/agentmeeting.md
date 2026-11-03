@@ -4,7 +4,7 @@
 
 | Agent/session ID | Role | Status | Heartbeat UTC | Feature | Branch/worktree | Claim reference |
 | --- | --- | --- | --- | --- | --- | --- |
-| planner-agent-01 | planner | ACTIVE | 2026-11-03T14:28:00Z | planning-and-integration | - | orchestrator-planner |
+| planner-agent-01 | planner | ACTIVE | 2026-11-03T14:37:00Z | planning-and-integration | - | orchestrator-planner |
 | Codex-20261103-b7e4-20261103-1dabdac6 | worker | COMPLETE | 2026-11-03T13:11:15Z | task-rust-core | - | codex-b7e4-rust-core-20261103 |
 | GPT56Sol-20261103-4f2c-20261103-b1f96458 | worker | COMPLETE | 2026-11-03T13:13:30Z | task-rea-scout | - | gpt56sol-4f2c-rea-scout-20261103 |
 | Codex-20261103-b7e4-20261103-8a8d02b1 | worker | COMPLETE | 2026-11-03T13:11:34Z | task-web-dropzone | - | codex-b7e4-web-dropzone-20261103 |
@@ -26,6 +26,10 @@
 | 6 | task-web-multimodal-client | web/ | Complete (Merged) | GPT56Sol-20261103-webmm-7c91-20261103-6764c49c | - | Upgrade Next.js Drop-Zone UI with direct multipart upload to /api/v1/analyze, displaying live Semantic ID badges, keyframe preview, and placement advice | npm --prefix web run build |
 | 7 | task-radar-simclusters | services/radar/ | Complete (Merged) | GPT56Sol-20261103-radarsim-93e2-20261103-0aae3e86 | - | Map extracted Semantic IDs to matching active SimClusters; query and return live matching viral root tweets with high impression velocity | pytest services/radar/tests/ |
 | 8 | task-api-integration | services/api/ | Complete (Merged) | GPT56Sol-20261103-apiint-4d6b-20261103-46afcdcf | task-multimodal-extractor | Connect FastAPI /api/v1/analyze to services/multimodal for zero-configuration media analysis without raw manual caller prediction JSON | pytest services/api/tests/ |
+| 9 | task-reach-calibration | crates/xreach-core/, services/api/ | Unclaimed | - | - | Empirical/parametric Log-Normal quantile reach calibration engine mapping raw Phoenix scores to reach potential percentiles (0-100%) | cargo test --manifest-path crates/xreach-core/Cargo.toml && pytest services/api/tests/ |
+| 10 | task-radar-sse-stream | services/api/, services/radar/ | Unclaimed | - | - | FastAPI SSE endpoint GET /api/v1/radar/stream with in-memory ring buffer, heartbeats, SimCluster filtering, and background seed producer | pytest services/api/tests/ && pytest services/radar/tests/ |
+| 11 | task-web-radar-dashboard | web/ | Unclaimed | - | task-radar-sse-stream | Real-time "Live Radar Opportunities" stream panel in Next.js dropzone UI with SSE connection, freshness timers, and velocity indicators | npm --prefix web run build |
+| 12 | task-web-reply-composer | web/ | Unclaimed | - | task-web-radar-dashboard, task-reach-calibration | One-Click Direct Reply Targeting workflow: pre-fills conversation context, verifies in_reply_to_tweet_id == conversation_id, and evaluates comparative advantage score | npm --prefix web run build |
 
 ## Atomic Claims
 
@@ -49,3 +53,4 @@
 - 2026-11-03T14:24:05Z — planner-agent-01: CI VERIFIED: GitHub Actions run 41652837060 for task-radar-simclusters passed on HEAD 5a65485. Merged to main.
 - 2026-11-03T14:27:36Z — planner-agent-01: CI VERIFIED: GitHub Actions run 41653677068 for task-api-integration passed on HEAD a98970f. Merged to main.
 - 2026-11-03T14:28:00Z — planner-agent-01: MILESTONE 2 COMPLETE: All 4 backlog features validated in remote CI and integrated into main.
+- 2026-11-03T14:37:00Z — planner-agent-01: MILESTONE 3 KICKOFF: Scope defined and published across 4 feature tasks (reach calibration, SSE stream, radar dashboard, and direct reply composer). Workers may claim eligible unblocked tasks.
