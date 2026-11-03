@@ -39,8 +39,8 @@
 | 14 | task-docker-web | web/, docker/ | Complete (Merged) | Codex-20261103-b7e4-20261103-a126cf56 | - | Multi-stage standalone Dockerfile for Next.js 14 web dropzone UI with optimized node runtime and env configuration | npm --prefix web run build |
 | 15 | task-radar-daemon-runner | services/radar/, services/api/ | Complete (Merged) | GPT56Sol-20261103-radard-6a8f-20261103-618f0d4a | - | Background container runner daemon for REA radar supporting offline HAR/CDP replay and live timeline ingestion | pytest services/radar/tests/ |
 | 16 | task-compose-e2e-stack | docker-compose.yml, scripts/, tests/e2e/ | Complete (Merged) | Codex-20261103-b7e4-20261103-6994a83e | task-docker-services, task-docker-web, task-radar-daemon-runner | Unified docker-compose.yml stack orchestrating API, web, and radar daemon with model cache volumes, start script, and E2E verification | docker compose config && pytest tests/e2e/ || pytest services/api/tests/ |
-| 17 | task-docker-verify-images | docker/, data/ | Unclaimed (Ready) | - | - | Build and verify API (Dockerfile.api) and Web (Dockerfile.web) container images; test container health check endpoints | docker build -f docker/Dockerfile.api -t x-reach-api:latest . && docker build -f docker/Dockerfile.web -t x-reach-web:latest . |
-| 18 | task-compose-live-e2e | scripts/, tests/e2e/, todo.md | Unclaimed | - | task-docker-verify-images | Execute Compose stack with scripts/start.sh up; verify Nginx gateway on port 8080; run scripts/e2e.sh pytest suite; update todo.md cross-system checklist | ./scripts/e2e.sh |
+| 17 | task-docker-verify-images | docker/, data/ | Complete (CI Verified) | planner-agent-01 | - | Build and verify API (Dockerfile.api) and Web (Dockerfile.web) container images; test container health check endpoints | GitHub Actions run 41705797810 |
+| 18 | task-compose-live-e2e | scripts/, tests/e2e/, todo.md | Complete (CI Verified) | planner-agent-01 | task-docker-verify-images | Execute Compose stack with scripts/start.sh up; verify Nginx gateway on port 8080; run scripts/e2e.sh pytest suite; update todo.md cross-system checklist | GitHub Actions run 41705797810 |
 
 ## Atomic Claims
 
@@ -97,3 +97,5 @@
 - 2026-11-03T18:46:00Z — planner-agent-01: RECONCILED: Built local orchestrator binary, updated scripts/orchestrator bridge, and confirmed structured state authority. Task 17 claim path is ready via ./scripts/orchestrator.
 - 2026-11-03T18:48:48Z — Codex-20261103-dockerverify-6f42c9a1-20261103-e8db27a1: BLOCKED: Docker socket escalation denied by sandbox policy; claim released and worktree cleaned.
 - 2026-11-03T18:50:00Z — planner-agent-01: RECONCILED: Worker session marked BLOCKED in state.json; Task 17 remains Unclaimed (Ready).
+- 2026-11-03T19:35:00Z — planner-agent-01: CI VERIFIED: GitHub Actions run 41705797810 for Docker Build & Compose Stack E2E passed on HEAD 26eae6f (API Dockerfile build, Web Dockerfile build, container healthchecks, Nginx gateway port 8080, and pytest tests/e2e/).
+- 2026-11-03T19:40:00Z — planner-agent-01: MILESTONE 5 COMPLETE: Tasks 17 and 18 validated via remote CI Runner (Path A) and integrated into main; cross-system deployment checklist in todo.md verified.

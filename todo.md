@@ -146,23 +146,25 @@ docker compose down
 
 When cloning or pulling onto another computer:
 
-- [ ] **Install Prerequisites**:
+- [x] **Install Prerequisites**:
   - [Docker Engine](https://docs.docker.com/engine/install/) (>= 24.0) or [Docker Desktop](https://www.docker.com/products/docker-desktop/)
   - [Docker Compose](https://docs.docker.com/compose/) (>= 2.20)
   - Git
-- [ ] **Clone the Repository**:
+- [x] **Clone the Repository**:
   ```bash
   git clone https://github.com/eeyung1/X-Reach.git
   cd X-Reach
   git checkout main
   ```
-- [ ] **Build and Smoke-Test the API**:
+- [x] **Build and Smoke-Test the API**:
+  *(CI Verified in GitHub Actions run [#41705797810](https://github.com/eeyung1/X-Reach/actions/runs/41705797810))*
   ```bash
   docker build -f docker/Dockerfile.api -t x-reach-api .
   docker run --rm -p 8000:8000 x-reach-api
   curl http://localhost:8000/healthz
   ```
-- [ ] **Test Post Analysis Endpoint**:
+- [x] **Test Post Analysis Endpoint**:
+  *(CI Verified in GitHub Actions run [#41705797810](https://github.com/eeyung1/X-Reach/actions/runs/41705797810))*
   ```bash
   curl -X POST http://localhost:8000/api/v1/analyze \
     -H "Content-Type: application/json" \
@@ -172,14 +174,24 @@ When cloning or pulling onto another computer:
       "candidate_id": 987654321
     }'
   ```
-- [ ] **Test Live Radar Opportunities Stream**:
+- [x] **Test Live Radar Opportunities Stream**:
+  *(CI Verified in GitHub Actions run [#41705797810](https://github.com/eeyung1/X-Reach/actions/runs/41705797810))*
   ```bash
   curl -N http://localhost:8000/api/v1/radar/stream
   ```
-- [ ] **Build and Smoke-Test Web Frontend**:
+- [x] **Build and Smoke-Test Web Frontend**:
+  *(CI Verified in GitHub Actions run [#41705797810](https://github.com/eeyung1/X-Reach/actions/runs/41705797810))*
   ```bash
   docker build -f docker/Dockerfile.web -t x-reach-web .
   docker run --rm -p 3000:3000 x-reach-web
+  ```
+- [x] **End-to-End Compose Stack Verification**:
+  *(CI Verified in GitHub Actions run [#41705797810](https://github.com/eeyung1/X-Reach/actions/runs/41705797810))*
+  ```bash
+  chmod 777 data && ./scripts/start.sh up
+  curl -f http://127.0.0.1:8080/healthz
+  pytest tests/e2e/ -v
+  ./scripts/start.sh down
   ```
 
 ---

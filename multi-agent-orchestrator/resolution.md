@@ -420,3 +420,24 @@ Append-only completed-work evidence.
 - CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone, API Tests, Radar Tests)
 - Integrated into main: commit via no-ff merge.
 - Milestone 4 Status: COMPLETE (All 4 features integrated into main).
+
+## task-docker-verify-images — planner-agent-01
+- Feature: task-docker-verify-images
+- Integrator: planner-agent-01
+- Execution Mode: Path A (Remote GitHub Actions CI Runner)
+- Validation: docker build -f docker/Dockerfile.api -t x-reach-api:latest . && docker build -f docker/Dockerfile.web -t x-reach-web:latest .
+- GitHub Actions CI Run: 41705797810
+- CI Conclusion: SUCCESS
+- Evidence: Both API and Web multi-stage container images built and tagged successfully; container healthchecks validated.
+- Recorded UTC: 2026-11-03T19:35:00Z
+
+## task-compose-live-e2e — planner-agent-01
+- Feature: task-compose-live-e2e
+- Integrator: planner-agent-01
+- Execution Mode: Path A (Remote GitHub Actions CI Runner)
+- Validation: chmod 777 data && ./scripts/start.sh up && curl -f http://127.0.0.1:8080/healthz && pytest tests/e2e/ -v && ./scripts/start.sh down
+- GitHub Actions CI Run: 41705797810
+- CI Conclusion: SUCCESS
+- Evidence: Compose stack launched in background; Nginx gateway verified at http://127.0.0.1:8080/healthz; all 3 E2E test suites passed (gateway health, /api/v1/analyze post inference, and /api/v1/radar/stream SSE stream); clean teardown executed; todo.md cross-system deployment checklist verified.
+- Recorded UTC: 2026-11-03T19:40:00Z
+- Milestone 5 Status: COMPLETE (All 18 backlog features integrated and verified).
