@@ -3,32 +3,50 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, TypeVar
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
+from starlette.datastructures import UploadFile
 
 from .models import (
     AnalyzeRequest,
     AnalyzeResponse,
+    AutomaticAnalyzeRequest,
     CandidateInput,
+    MultimodalOutput,
     PlacementRequest,
     ScoreOutput,
 )
+from .multimodal import (
+    MediaUpload,
+    MultimodalBackend,
+    MultimodalService,
+    MultimodalUnavailable,
+)
 from .rust_scorer import RustScorer, ScorerUnavailable
 
+MAX_MEDIA_BYTES = 50 * 1024 * 1024
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
-def create_app(scorer: RustScorer | None = None) -> FastAPI:
+
+def create_app(
+    scorer: RustScorer | None = None,
+    multimodal: MultimodalBackend | None = None,
+) -> FastAPI:
     app = FastAPI(
         title="X-Reach API",
         version="0.1.0",
         description=(
-            "Scores caller-supplied Phoenix prediction heads with the Rust core. "
-            "No calibrated reach-percentile model is configured."
+            "Extracts local multimodal draft signals and scores their Phoenix "
+            "prediction heads with the Rust core. No calibrated reach-percentile "
+            "model is configured."
         ),
     )
     app.state.scorer = scorer or RustScorer()
+    app.state.multimodal = multimodal or MultimodalService()
 
     @app.get("/healthz")
     def health() -> dict[str, str]:
@@ -36,15 +54,22 @@ def create_app(scorer: RustScorer | None = None) -> FastAPI:
 
     @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
     async def analyze(request: Request) -> AnalyzeResponse:
-        payload = await _analysis_payload(request)
-        try:
-            data = AnalyzeRequest.model_validate(payload)
-        except ValidationError as error:
-            details = [
-                {"loc": item["loc"], "msg": item["msg"], "type": item["type"]}
-                for item in error.errors()
-            ]
-            raise HTTPException(status_code=422, detail=details) from error
+        payload, media = await _analysis_payload(request)
+        extracted: MultimodalOutput | None = None
+        if "predictions" in payload:
+            data = _validated(AnalyzeRequest, payload)
+        else:
+            automatic = _validated(AutomaticAnalyzeRequest, payload)
+            extracted = await run_in_threadpool(
+                _extract,
+                app.state.multimodal,
+                automatic.text,
+                media,
+            )
+            data = CandidateInput(
+                predictions=extracted.predictions,
+                **automatic.model_dump(exclude={"text", "media_attached"}),
+            )
 
         rust_result = await run_in_threadpool(_score, app.state.scorer, data)
         return AnalyzeResponse(
@@ -60,11 +85,27 @@ def create_app(scorer: RustScorer | None = None) -> FastAPI:
             suggested_tweaks=[
                 "Reach percentile is unavailable until a calibration model is configured.",
                 *(
+                    ["Treat action propensities as an uncalibrated model proxy."]
+                    if extracted is not None
+                    and "uncalibrated" in extracted.propensity_status
+                    else []
+                ),
+                *(
                     ["Review visibility drops before considering either placement."]
                     if rust_result["dropped_by"]
                     else []
                 ),
             ],
+            model_name=extracted.model_name if extracted else None,
+            semantic_id=extracted.semantic_id if extracted else None,
+            predicted_probabilities=extracted.predictions if extracted else None,
+            modalities=extracted.modalities if extracted else [],
+            keyframes=extracted.keyframes if extracted else [],
+            video_duration_seconds=(
+                extracted.video_duration_seconds if extracted else None
+            ),
+            quantizer_status=extracted.quantizer_status if extracted else None,
+            propensity_status=extracted.propensity_status if extracted else None,
         )
 
     @app.post("/api/v1/placement")
@@ -121,40 +162,86 @@ def create_app(scorer: RustScorer | None = None) -> FastAPI:
     return app
 
 
-async def _analysis_payload(request: Request) -> dict[str, Any]:
+async def _analysis_payload(
+    request: Request,
+) -> tuple[dict[str, Any], tuple[MediaUpload, ...]]:
     content_type = request.headers.get("content-type", "")
     try:
         if content_type.startswith("application/json"):
             value = await request.json()
             if not isinstance(value, dict):
                 raise ValueError("JSON request body must be an object")
-            return value
+            return value, ()
         if content_type.startswith("multipart/form-data"):
             async with request.form(max_files=4, max_fields=20) as form:
                 predictions = form.get("predictions")
-                if not isinstance(predictions, str):
-                    raise ValueError(
-                        "multipart requests must include JSON-encoded predictions"
-                    )
-                value = json.loads(predictions)
-                if not isinstance(value, dict):
-                    raise ValueError("predictions must be a JSON object")
-                # Attached media is transport-only; an upstream model layer
-                # provides its predicted action heads separately.
-                return {
+                uploads = form.getlist("media")
+                if any(not isinstance(upload, UploadFile) for upload in uploads):
+                    raise ValueError("media fields must be file uploads")
+                media = tuple([await _read_upload(upload) for upload in uploads])
+                payload: dict[str, Any] = {
                     "text": str(form.get("text", "")),
-                    "predictions": value,
-                    "media_attached": any(
-                        getattr(upload, "filename", "")
-                        for upload in form.getlist("media")
-                    ),
+                    "media_attached": bool(media),
                 }
-    except (json.JSONDecodeError, ValueError) as error:
+                if isinstance(predictions, str):
+                    value = json.loads(predictions)
+                    if not isinstance(value, dict):
+                        raise TypeError("predictions must be a JSON object")
+                    payload["predictions"] = value
+                elif predictions is not None:
+                    raise ValueError("predictions must be JSON-encoded text")
+                return payload, media
+    except (ValueError, TypeError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     raise HTTPException(
         status_code=415,
-        detail="Use application/json or multipart/form-data with predictions.",
+        detail="Use application/json or multipart/form-data.",
     )
+
+
+async def _read_upload(upload: UploadFile) -> MediaUpload:
+    content = await upload.read(MAX_MEDIA_BYTES + 1)
+    if len(content) > MAX_MEDIA_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"{upload.filename or 'media'} exceeds the 50 MB media limit",
+        )
+    return MediaUpload(
+        data=content,
+        media_type=upload.content_type or "application/octet-stream",
+        filename=upload.filename or "upload",
+    )
+
+
+def _validated(model: type[ModelT], payload: Mapping[str, Any]) -> ModelT:
+    try:
+        return model.model_validate(payload)
+    except ValidationError as error:
+        details = [
+            {"loc": item["loc"], "msg": item["msg"], "type": item["type"]}
+            for item in error.errors()
+        ]
+        raise HTTPException(status_code=422, detail=details) from error
+
+
+def _extract(
+    backend: MultimodalBackend,
+    text: str,
+    media: tuple[MediaUpload, ...],
+) -> MultimodalOutput:
+    try:
+        payload = backend.extract(text, media)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except MultimodalUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    try:
+        return MultimodalOutput.model_validate(payload)
+    except ValidationError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="multimodal extractor returned invalid model output",
+        ) from error
 
 
 def _score(scorer: RustScorer, candidate: CandidateInput) -> dict[str, Any]:

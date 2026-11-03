@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Predictions(BaseModel):
@@ -46,10 +46,9 @@ SafetyLabel = Literal[
 ]
 
 
-class CandidateInput(BaseModel):
+class CandidateOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    predictions: Predictions
     author_id: int = Field(default=0, ge=0, le=18_446_744_073_709_551_615)
     is_reply: bool = False
     is_retweet: bool = False
@@ -62,12 +61,27 @@ class CandidateInput(BaseModel):
     oon_multiplier: float = Field(default=1.0, ge=0, le=100)
 
 
+class CandidateInput(CandidateOptions):
+    predictions: Predictions
+
+
 class AnalyzeRequest(CandidateInput):
     text: str = Field(default="", max_length=280)
     media_attached: bool = False
 
     @model_validator(mode="after")
     def require_draft_content(self) -> AnalyzeRequest:
+        if not self.text.strip() and not self.media_attached:
+            raise ValueError("text or attached media is required")
+        return self
+
+
+class AutomaticAnalyzeRequest(CandidateOptions):
+    text: str = Field(default="", max_length=280)
+    media_attached: bool = False
+
+    @model_validator(mode="after")
+    def require_draft_content(self) -> AutomaticAnalyzeRequest:
         if not self.text.strip() and not self.media_attached:
             raise ValueError("text or attached media is required")
         return self
@@ -98,6 +112,44 @@ class ScoreOutput(BaseModel):
     dropped_by: list[str]
 
 
+class KeyframeOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    timestamp_seconds: float = Field(ge=0)
+
+
+class MultimodalOutput(BaseModel):
+    # Embeddings/features are intentionally omitted from the public API payload.
+    model_config = ConfigDict(extra="ignore")
+
+    model_name: str
+    embedding_dimension: int = Field(gt=0)
+    semantic_id: list[int]
+    predictions: Predictions
+    modalities: list[str]
+    keyframes: list[KeyframeOutput] = Field(default_factory=list)
+    video_duration_seconds: float | None = Field(default=None, ge=0)
+    quantizer_status: str
+    propensity_status: str
+
+    @field_validator("semantic_id", mode="before")
+    @classmethod
+    def validate_semantic_id(cls, value: object) -> object:
+        if (
+            not isinstance(value, list)
+            or len(value) != 6
+            or any(
+                not isinstance(code, int)
+                or isinstance(code, bool)
+                or not 0 <= code < 256
+                for code in value
+            )
+        ):
+            raise ValueError("semantic_id must contain six codes from 0 through 255")
+        return value
+
+
 class AnalyzeResponse(BaseModel):
     algorithmic_viability_score: float
     reach_potential_percentile: None = None
@@ -105,3 +157,11 @@ class AnalyzeResponse(BaseModel):
     score: ScoreOutput
     placement_recommendation: dict[str, str]
     suggested_tweaks: list[str]
+    model_name: str | None = None
+    semantic_id: list[int] | None = None
+    predicted_probabilities: Predictions | None = None
+    modalities: list[str] = Field(default_factory=list)
+    keyframes: list[KeyframeOutput] = Field(default_factory=list)
+    video_duration_seconds: float | None = None
+    quantizer_status: str | None = None
+    propensity_status: str | None = None
