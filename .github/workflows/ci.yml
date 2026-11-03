@@ -81,3 +81,21 @@ jobs:
           else
             echo "services/api/tests not present in this branch"
           fi
+
+  multimodal:
+    name: Multimodal Extractor Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run Multimodal Tests
+        run: |
+          if [ -d services/multimodal/tests ]; then
+            cd services/multimodal
+            pip install ".[test]"
+            pytest
+          else
+            echo "services/multimodal/tests not present in this branch"
+          fi
