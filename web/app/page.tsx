@@ -43,6 +43,27 @@ type Analysis = {
   };
 };
 
+type RadarSeed = {
+  tweet_id: string;
+  conversation_id?: string;
+  author_id?: string | null;
+  screen_name?: string | null;
+  text?: string | null;
+  created_at?: string;
+  age_minutes?: number;
+  impressions: number;
+  views_per_minute: number;
+  replies: number;
+  likes?: number | null;
+  reposts?: number | null;
+  quotes?: number | null;
+  simclusters: string[];
+  published_at?: string;
+};
+
+type RadarEntry = { seed: RadarSeed; receivedAt: number };
+type RadarConnection = "connecting" | "live" | "reconnecting" | "offline";
+
 const MAX_MEDIA = 4;
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
@@ -140,6 +161,64 @@ function errorDetail(payload: unknown): string | null {
   return null;
 }
 
+function radarSeedFromEvent(value: unknown): RadarSeed | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const velocity = Number(record.views_per_minute);
+  const impressions = Number(record.impressions);
+  const replies = Number(record.replies);
+  if (
+    typeof record.tweet_id !== "string" ||
+    !Number.isFinite(velocity) ||
+    !Number.isFinite(impressions) ||
+    !Number.isFinite(replies)
+  ) {
+    return null;
+  }
+  const simclusters = Array.isArray(record.simclusters)
+    ? record.simclusters.filter((item): item is string => typeof item === "string")
+    : [];
+  return {
+    tweet_id: record.tweet_id,
+    conversation_id:
+      typeof record.conversation_id === "string" ? record.conversation_id : undefined,
+    author_id: typeof record.author_id === "string" ? record.author_id : null,
+    screen_name:
+      typeof record.screen_name === "string" ? record.screen_name : null,
+    text: typeof record.text === "string" ? record.text : null,
+    created_at: typeof record.created_at === "string" ? record.created_at : undefined,
+    age_minutes: Number.isFinite(Number(record.age_minutes))
+      ? Number(record.age_minutes)
+      : undefined,
+    impressions,
+    views_per_minute: velocity,
+    replies,
+    likes: Number.isFinite(Number(record.likes)) ? Number(record.likes) : null,
+    reposts: Number.isFinite(Number(record.reposts)) ? Number(record.reposts) : null,
+    quotes: Number.isFinite(Number(record.quotes)) ? Number(record.quotes) : null,
+    simclusters,
+    published_at:
+      typeof record.published_at === "string" ? record.published_at : undefined,
+  };
+}
+
+function freshnessLabel(receivedAt: number, now: number): string {
+  const seconds = Math.max(0, Math.floor((now - receivedAt) / 1_000));
+  if (seconds < 5) return "just now";
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  return `${Math.floor(minutes / 60)}h ago`;
+}
+
+function postedAgeLabel(createdAt: string | undefined, now: number): string | null {
+  if (!createdAt) return null;
+  const timestamp = Date.parse(createdAt);
+  if (!Number.isFinite(timestamp)) return null;
+  const minutes = Math.max(0, Math.floor((now - timestamp) / 60_000));
+  return minutes < 1 ? "posted just now" : `posted ${minutes}m ago`;
+}
+
 async function captureHookFrame(videoUrl: string): Promise<KeyframePreview> {
   const video = document.createElement("video");
   video.muted = true;
@@ -200,6 +279,13 @@ export default function Home() {
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [radarEntries, setRadarEntries] = useState<RadarEntry[]>([]);
+  const [radarConnection, setRadarConnection] = useState<RadarConnection>("connecting");
+  const [radarFilterDraft, setRadarFilterDraft] = useState("");
+  const [radarFilter, setRadarFilter] = useState("");
+  const [radarFilterRevision, setRadarFilterRevision] = useState(0);
+  const [radarNotice, setRadarNotice] = useState("");
+  const [radarNow, setRadarNow] = useState(0);
   const [notice, setNotice] = useState(
     "Add a draft to request live multimodal analysis. The report preview is illustrative until then.",
   );
@@ -214,6 +300,59 @@ export default function Home() {
     () => () => mediaRef.current.forEach((item) => URL.revokeObjectURL(item.preview)),
     [],
   );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setRadarNow(Date.now()), 5_000);
+    setRadarNow(Date.now());
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const query = new URLSearchParams();
+    if (radarFilter) query.set("simcluster", radarFilter);
+    const source = new EventSource(
+      `/api/v1/radar/stream${query.size ? `?${query.toString()}` : ""}`,
+    );
+    setRadarConnection("connecting");
+    setRadarNotice("");
+
+    source.onopen = () => setRadarConnection("live");
+    source.onerror = () =>
+      setRadarConnection(
+        source.readyState === EventSource.CLOSED ? "offline" : "reconnecting",
+      );
+    source.addEventListener("seed", (event: Event) => {
+      const message = event as MessageEvent<string>;
+      try {
+        const seed = radarSeedFromEvent(JSON.parse(message.data));
+        if (!seed) return;
+        const receivedAt = Date.now();
+        setRadarEntries((current) => {
+          const updated = new Map(current.map((entry) => [entry.seed.tweet_id, entry]));
+          updated.set(seed.tweet_id, { seed, receivedAt });
+          return Array.from(updated.values())
+            .sort((left, right) => right.seed.views_per_minute - left.seed.views_per_minute)
+            .slice(0, 30);
+        });
+        setRadarConnection("live");
+      } catch {
+        setRadarNotice("A radar update could not be read; the stream will keep listening.");
+      }
+    });
+    source.addEventListener("heartbeat", () => setRadarConnection("live"));
+    source.addEventListener("reset", () => {
+      setRadarEntries([]);
+      setRadarNotice("Some older opportunities expired from the live buffer.");
+    });
+    return () => source.close();
+  }, [radarFilter, radarFilterRevision]);
+
+  function applyRadarFilter(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setRadarEntries([]);
+    setRadarFilter(radarFilterDraft.trim());
+    setRadarFilterRevision((revision) => revision + 1);
+  }
 
   async function addFiles(files: FileList | File[]) {
     const incoming = Array.from(files);
@@ -308,6 +447,14 @@ export default function Home() {
   const reachPercent = hasCalibratedReach
     ? Math.min(100, Math.max(0, Number.parseFloat(String(reachValue)) || 0))
     : 0;
+  const peakVelocity = Math.max(
+    1,
+    ...radarEntries.map((entry) => entry.seed.views_per_minute),
+  );
+  const latestRadarUpdate = radarEntries.reduce<number | null>(
+    (latest, entry) => Math.max(latest ?? 0, entry.receivedAt),
+    null,
+  );
 
   return (
     <main className="shell">
@@ -317,7 +464,7 @@ export default function Home() {
           <span>X-Reach</span>
         </a>
         <div className="topbar-right">
-          <span className="live-dot" /> DRAFT LAB <span className="version">MILESTONE 02</span>
+          <span className="live-dot" /> DRAFT LAB <span className="version">MILESTONE 03</span>
         </div>
       </header>
 
@@ -532,6 +679,136 @@ export default function Home() {
           </div>
         </aside>
       </div>
+
+      <section className="radar-panel panel" aria-labelledby="radar-title">
+        <div className="panel-heading radar-heading">
+          <div>
+            <span className="step">03 / LIVE SIGNALS</span>
+            <h2 id="radar-title">Radar opportunities</h2>
+          </div>
+          <span className={`radar-connection ${radarConnection}`}>
+            <span className="radar-connection-dot" />
+            {radarConnection === "live"
+              ? "LIVE"
+              : radarConnection === "reconnecting"
+                ? "RECONNECTING"
+                : radarConnection === "offline"
+                  ? "OFFLINE"
+                  : "CONNECTING"}
+          </span>
+        </div>
+
+        <div className="radar-toolbar">
+          <p>
+            Fresh root posts from active SimClusters, ranked by observed view velocity.
+          </p>
+          <form className="radar-filter" onSubmit={applyRadarFilter}>
+            <label className="sr-only" htmlFor="radar-cluster-filter">
+              Filter radar by SimCluster
+            </label>
+            <input
+              id="radar-cluster-filter"
+              value={radarFilterDraft}
+              onChange={(event) => setRadarFilterDraft(event.target.value)}
+              placeholder="Filter by SimCluster"
+            />
+            <button type="submit">Apply</button>
+          </form>
+        </div>
+
+        <div className="radar-stream-meta" aria-live="polite">
+          <span>
+            {radarFilter ? `FILTER · ${radarFilter}` : "ALL SIMCLUSTERS"}
+          </span>
+          <span>
+            {latestRadarUpdate === null
+              ? "WAITING FOR FIRST SIGNAL"
+              : `LAST SIGNAL ${freshnessLabel(latestRadarUpdate, radarNow)}`}
+          </span>
+        </div>
+
+        {radarNotice && <p className="radar-notice" role="status">{radarNotice}</p>}
+
+        {radarEntries.length ? (
+          <div className="radar-list">
+            {radarEntries.map(({ seed, receivedAt }, index) => {
+              const velocityShare = Math.max(
+                4,
+                (seed.views_per_minute / peakVelocity) * 100,
+              );
+              const postedAge = postedAgeLabel(seed.created_at, radarNow);
+              const author = seed.screen_name
+                ? `@${seed.screen_name}`
+                : seed.author_id
+                  ? `Author ${seed.author_id}`
+                  : "X post";
+              return (
+                <article className="radar-card" key={seed.tweet_id}>
+                  <div className="radar-card-topline">
+                    <span className="radar-rank">{String(index + 1).padStart(2, "0")}</span>
+                    <span className="radar-freshness">
+                      Updated {freshnessLabel(receivedAt, radarNow)}
+                    </span>
+                  </div>
+                  <div className="radar-author-line">
+                    <strong>{author}</strong>
+                    {postedAge && <span>{postedAge}</span>}
+                  </div>
+                  <p className="radar-post-text">
+                    {seed.text?.trim() || "Post text was not present in this capture."}
+                  </p>
+                  <div className="radar-velocity-heading">
+                    <span>VIEW VELOCITY</span>
+                    <strong>{Math.round(seed.views_per_minute).toLocaleString()}/min</strong>
+                  </div>
+                  <div
+                    className="radar-velocity-track"
+                    role="img"
+                    aria-label={`${Math.round(seed.views_per_minute).toLocaleString()} views per minute`}
+                  >
+                    <span style={{ width: `${velocityShare}%` }} />
+                  </div>
+                  <div className="radar-metrics">
+                    <span>{seed.impressions.toLocaleString()} views</span>
+                    <span>{seed.replies.toLocaleString()} replies</span>
+                  </div>
+                  <div className="radar-card-bottom">
+                    <div className="radar-clusters">
+                      {seed.simclusters.length ? (
+                        seed.simclusters.slice(0, 3).map((cluster) => (
+                          <span key={cluster}>{cluster}</span>
+                        ))
+                      ) : (
+                        <span>Unlabeled cluster</span>
+                      )}
+                    </div>
+                    <a
+                      href={`https://x.com/i/web/status/${encodeURIComponent(seed.tweet_id)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Open post by ${author} on X`}
+                    >
+                      OPEN POST <span aria-hidden="true">↗</span>
+                    </a>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="radar-empty" role="status">
+            <span className="radar-empty-mark" aria-hidden="true">↗</span>
+            <strong>No live opportunities yet</strong>
+            <p>
+              {radarConnection === "offline"
+                ? "The radar stream is offline. It will reconnect automatically when the API is available."
+                : radarFilter
+                  ? `Waiting for fresh roots tagged ${radarFilter}.`
+                  : "The stream will show fresh root posts when the radar receives a new capture."}
+            </p>
+          </div>
+        )}
+      </section>
 
       <footer className="page-footer">
         <span>
