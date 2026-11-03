@@ -62,9 +62,11 @@ def timeline(*tweets):
 
 
 def test_ranks_fresh_root_seeds_and_preserves_source_fields():
+    faster = tweet("faster", age_minutes=5, views=10_000)
+    faster["semantic_id"] = [12, 44, 91, 8, 203, 17]
     capture = timeline(
         tweet("slower", age_minutes=10, views=8_000),
-        tweet("faster", age_minutes=5, views=10_000),
+        faster,
     )
     seeds = SeedScout().scan(capture, now=NOW)
 
@@ -73,6 +75,7 @@ def test_ranks_fresh_root_seeds_and_preserves_source_fields():
     assert seeds[0].author_id == "author-1"
     assert seeds[0].screen_name == "builder"
     assert seeds[0].simclusters == ("42", "Technology")
+    assert seeds[0].semantic_id == (12, 44, 91, 8, 203, 17)
     assert seeds[0].source_operation == "HomeTimeline"
 
 

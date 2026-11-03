@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .cdp_client import ReaClient, ReaCommandError
 from .seed_scout import ScoutConfig, SeedScout
+from .simclusters import SimClusterIndex, SimClusterScout, semantic_id
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,6 +32,16 @@ def build_parser() -> argparse.ArgumentParser:
     scout.add_argument("--min-views-per-minute", type=float, default=500.0)
     scout.add_argument("--max-replies", type=int, default=50)
     scout.add_argument("--cluster", action="append", default=[])
+    scout.add_argument(
+        "--semantic-id",
+        help="six comma-separated SID codes; returns only aligned viral roots",
+    )
+    scout.add_argument(
+        "--simcluster-catalog",
+        type=Path,
+        help="optional JSON catalog mapping active cluster names to SID prefixes",
+    )
+    scout.add_argument("--min-prefix-levels", type=int, default=2)
     scout.add_argument(
         "--now",
         type=datetime.fromisoformat,
@@ -59,10 +70,33 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_replies=arguments.max_replies,
             target_simclusters=frozenset(arguments.cluster),
         )
-        seeds = SeedScout(config).scan(capture, now=arguments.now)
+        if arguments.semantic_id:
+            codes = semantic_id(
+                tuple(int(part.strip()) for part in arguments.semantic_id.split(","))
+            )
+            catalog = (
+                SimClusterIndex.from_payload(
+                    json.loads(arguments.simcluster_catalog.read_text(encoding="utf-8"))
+                )
+                if arguments.simcluster_catalog
+                else SimClusterIndex()
+            )
+            seeds = SimClusterScout(
+                catalog,
+                config,
+                min_prefix_levels=arguments.min_prefix_levels,
+            ).query(capture, codes, now=arguments.now)
+        else:
+            seeds = SeedScout(config).scan(capture, now=arguments.now)
         _print_json([asdict(seed) for seed in seeds])
         return 0
-    except (OSError, ValueError, json.JSONDecodeError, ReaCommandError) as error:
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        ReaCommandError,
+    ) as error:
         print(str(error), file=sys.stderr)
         return 2
 
