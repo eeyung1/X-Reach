@@ -1,7 +1,7 @@
 # Coordination
 
 ## Project Context
-- **Repository**: local-git:/home/recoding/Projects/X/X-Reach
+- **Repository**: local-git:/home/eeyung/Projects/X-Reach
 - **Authority**: ORCHESTRATOR Native Enrollment
 - **Product**: X-Reach (Algorithmic Post Optimizer & Zero-Follower Reach Predictor)
 - **Engines**: x-algorithm-main (Phoenix Value Model & Visibility Filtering) & rea-main (Reverse-Engineering Telemetry)
@@ -25,6 +25,10 @@
   2. **Video Analysis Strategy**: Keyframe extraction & pacing (hook frame 0–2s, midpoint, climax) combined with duration metadata to predict `video_open`, continuation seconds, and dwell time.
   3. **End-to-End Vertical Slice**: Integrate the multimodal pipeline through FastAPI all the way into the Next.js drop-zone UI for live drag-and-drop draft analysis.
   4. **Radar SimCluster Alignment**: Map Semantic IDs directly to active SimClusters in `services/radar/` to scout matching viral root posts.
+- **2026-11-03**: Milestone 5 Scope Decisions Approved:
+  1. **Host Docker Execution**: Docker Engine 29.1.3 and Docker Compose 2.40.3 are verified operational on this system.
+  2. **Milestone 5 Objective**: Execute and validate the Docker build and cross-system deployment checklist from `todo.md` across 2 tasks: `task-docker-verify-images` and `task-compose-live-e2e`.
+  3. **Decoupled Worker Workflow**: Worker agents claim tasks, isolate execution in Git worktrees, perform Docker builds/tests, and hand off commits without co-author trailers. The Planner agent (`planner-agent-01`) pushes the feature branch to `origin`, monitors GitHub Actions CI on HEAD, merges validated PRs into `main`, pulls merged `origin/main` locally, and reconciles the coordination ledgers to unblock downstream tasks.
 
 
 

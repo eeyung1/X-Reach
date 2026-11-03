@@ -4,7 +4,7 @@
 
 | Agent/session ID | Role | Status | Heartbeat UTC | Feature | Branch/worktree | Claim reference |
 | --- | --- | --- | --- | --- | --- | --- |
-| planner-agent-01 | planner | ACTIVE | 2026-11-03T16:09:00Z | planning-and-integration | - | orchestrator-planner |
+| planner-agent-01 | planner | ACTIVE | 2026-11-03T18:38:00Z | planning-and-integration | - | orchestrator-planner |
 | Codex-20261103-b7e4-20261103-1dabdac6 | worker | COMPLETE | 2026-11-03T13:11:15Z | task-rust-core | - | codex-b7e4-rust-core-20261103 |
 | GPT56Sol-20261103-4f2c-20261103-b1f96458 | worker | COMPLETE | 2026-11-03T13:13:30Z | task-rea-scout | - | gpt56sol-4f2c-rea-scout-20261103 |
 | Codex-20261103-b7e4-20261103-8a8d02b1 | worker | COMPLETE | 2026-11-03T13:11:34Z | task-web-dropzone | - | codex-b7e4-web-dropzone-20261103 |
@@ -38,6 +38,8 @@
 | 14 | task-docker-web | web/, docker/ | Complete (Merged) | Codex-20261103-b7e4-20261103-a126cf56 | - | Multi-stage standalone Dockerfile for Next.js 14 web dropzone UI with optimized node runtime and env configuration | npm --prefix web run build |
 | 15 | task-radar-daemon-runner | services/radar/, services/api/ | Complete (Merged) | GPT56Sol-20261103-radard-6a8f-20261103-618f0d4a | - | Background container runner daemon for REA radar supporting offline HAR/CDP replay and live timeline ingestion | pytest services/radar/tests/ |
 | 16 | task-compose-e2e-stack | docker-compose.yml, scripts/, tests/e2e/ | Complete (Merged) | Codex-20261103-b7e4-20261103-6994a83e | task-docker-services, task-docker-web, task-radar-daemon-runner | Unified docker-compose.yml stack orchestrating API, web, and radar daemon with model cache volumes, start script, and E2E verification | docker compose config && pytest tests/e2e/ || pytest services/api/tests/ |
+| 17 | task-docker-verify-images | docker/, data/ | Unclaimed (Ready) | - | - | Build and verify API (Dockerfile.api) and Web (Dockerfile.web) container images; test container health check endpoints | docker build -f docker/Dockerfile.api -t x-reach-api:latest . && docker build -f docker/Dockerfile.web -t x-reach-web:latest . |
+| 18 | task-compose-live-e2e | scripts/, tests/e2e/, todo.md | Unclaimed | - | task-docker-verify-images | Execute Compose stack with scripts/start.sh up; verify Nginx gateway on port 8080; run scripts/e2e.sh pytest suite; update todo.md cross-system checklist | ./scripts/e2e.sh |
 
 ## Atomic Claims
 
@@ -90,3 +92,4 @@
 - 2026-11-03T16:36:49Z — Codex-20261103-b7e4-20261103-6994a83e: HANDOFF: commit 91dd37a554a2f52b0ad9e2a5eb376a4dd3a32a68 on branch agent/task-compose-e2e-stack ready for publication; Compose runtime and E2E tests need a Docker-capable environment.
 - 2026-11-03T16:39:15Z — planner-agent-01: CI VERIFIED: GitHub Actions run 41676219606 for task-compose-e2e-stack passed on HEAD 91dd37a. Merged to main.
 - 2026-11-03T16:40:00Z — planner-agent-01: MILESTONE 4 COMPLETE: All 4 containerization, daemon, and compose stack backlog features validated in remote CI and integrated into main.
+- 2026-11-03T18:38:00Z — planner-agent-01: MILESTONE 5 KICKOFF: Scope defined and published across 2 Docker validation tasks (task-docker-verify-images and task-compose-live-e2e). Workers may claim eligible unblocked tasks.
