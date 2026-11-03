@@ -1,0 +1,76 @@
+name: x-reach
+
+services:
+  api:
+    image: x-reach-api:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      XREACH_RADAR_INGEST_TOKEN: ${XREACH_RADAR_INGEST_TOKEN:-local-compose-token}
+      XREACH_REACH_CALIBRATION_FILE: ${XREACH_REACH_CALIBRATION_FILE:-}
+    volumes:
+      - model-cache:/models
+      - type: bind
+        source: ${XREACH_DATA_DIR:-./data}
+        target: /data
+        read_only: true
+
+  web:
+    image: x-reach-web:local
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    restart: unless-stopped
+
+  radar:
+    image: ${XREACH_RADAR_IMAGE:-x-reach-api:local}
+    depends_on:
+      api:
+        condition: service_healthy
+    init: true
+    command:
+      - xreach-radar
+      - daemon
+      - --capture
+      - /data/radar-capture.json
+      - --rea-command
+      - ${XREACH_REA_COMMAND:-rea}
+      - --api-url
+      - http://api:8000
+      - --poll-seconds
+      - ${XREACH_RADAR_POLL_SECONDS:-5}
+    environment:
+      XREACH_RADAR_INGEST_TOKEN: ${XREACH_RADAR_INGEST_TOKEN:-local-compose-token}
+      XREACH_REA_SCENARIO_FILE: ${XREACH_REA_SCENARIO_FILE:-}
+    volumes:
+      - type: bind
+        source: ${XREACH_DATA_DIR:-./data}
+        target: /data
+        read_only: true
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+
+  gateway:
+    image: nginx:1.30.6-alpine3.24
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:${XREACH_HTTP_PORT:-8080}:8080
+    volumes:
+      - ./scripts/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  model-cache:
