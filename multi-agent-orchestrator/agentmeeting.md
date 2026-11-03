@@ -17,6 +17,7 @@
 | Codex-20261103-b7e4-20261103-8f5600ff | worker | COMPLETE | 2026-11-03T14:54:00Z | task-radar-sse-stream | - | codex-b7e4-radar-sse-20261103 |
 | Codex-20261103-b7e4-20261103-b0d8d2fb | worker | COMPLETE | 2026-11-03T15:12:00Z | task-web-radar-dashboard | - | codex-b7e4-web-radar-dashboard-20261103 |
 | Codex-20261103-b7e4-20261103-3a2f42ef | worker | COMPLETE | 2026-11-03T15:53:30Z | task-web-reply-composer | - | codex-b7e4-web-reply-composer-20261103 |
+| Codex-20261103-dockerverify-6f42c9a1-20261103-e8db27a1 | worker | BLOCKED | 2026-11-03T18:48:48Z | task-docker-verify-images | - | token-docker-verify-1793731967 |
 
 ## Feature Backlog
 
@@ -94,3 +95,5 @@
 - 2026-11-03T16:40:00Z — planner-agent-01: MILESTONE 4 COMPLETE: All 4 containerization, daemon, and compose stack backlog features validated in remote CI and integrated into main.
 - 2026-11-03T18:38:00Z — planner-agent-01: MILESTONE 5 KICKOFF: Scope defined and published across 2 Docker validation tasks (task-docker-verify-images and task-compose-live-e2e). Workers may claim eligible unblocked tasks.
 - 2026-11-03T18:46:00Z — planner-agent-01: RECONCILED: Built local orchestrator binary, updated scripts/orchestrator bridge, and confirmed structured state authority. Task 17 claim path is ready via ./scripts/orchestrator.
+- 2026-11-03T18:48:48Z — Codex-20261103-dockerverify-6f42c9a1-20261103-e8db27a1: BLOCKED: Docker socket escalation denied by sandbox policy; claim released and worktree cleaned.
+- 2026-11-03T18:50:00Z — planner-agent-01: RECONCILED: Worker session marked BLOCKED in state.json; Task 17 remains Unclaimed (Ready).
