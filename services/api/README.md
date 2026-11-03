@@ -1,10 +1,11 @@
 # X-Reach API
 
 The FastAPI service extracts local multimodal draft features, validates the
-resulting action propensities, and delegates scoring to the Rust `xreach-core`
-crate through the JSON-lines scorer in `rust-bridge/`. Callers can submit text
-and media directly without constructing prediction JSON. Percentile output is
-still `null` until calibration data is configured.
+resulting action propensities, and delegates scoring and optional reach
+calibration to the Rust `xreach-core` crate through the JSON-lines scorer in
+`rust-bridge/`. Callers can submit text and media directly without constructing
+prediction JSON. Percentile output is `null` until historical score calibration
+data is configured.
 
 ## Setup
 
@@ -36,9 +37,34 @@ JSON-encoded multipart field to bypass automatic extraction.
 The response includes the weighted and final Phoenix scores, visibility drops,
 the six-level `semantic_id`, compact multimodal metadata (never raw embeddings),
 and an explicit `reach_calibration_status` of `unavailable` with a null
-`reach_potential_percentile`. OpenCLIP loads lazily on the first automatic
+`reach_potential_percentile` by default. OpenCLIP loads lazily on the first automatic
 request; missing inference dependencies produce a 503 without preventing the
 API from starting or manual-prediction requests from working.
+
+## Reach calibration
+
+Set `XREACH_REACH_CALIBRATION_FILE` to a JSON calibration file to enable
+percentiles. The empirical method uses historical final Phoenix scores as a
+reference distribution; equal scores receive their average rank and values
+outside the sample map to 0 or 100. For example:
+
+```json
+{"method":"empirical","reference_scores":[0.001,0.04,0.12,0.8]}
+```
+
+The parametric method fits a log-normal distribution to positive historical
+Phoenix scores. Supply the mean and population standard deviation of their
+natural logarithms:
+
+```json
+{"method":"log_normal","log_mean":-1.2,"log_std_dev":0.8}
+```
+
+Both methods return a percentile of the configured historical score
+distribution. Populate the reference data from a representative set of
+observed posts before using the result as a reach estimate; the service does
+not ship with a fabricated calibration dataset. `/api/v1/placement` includes
+the percentile for the recommended surface and for each candidate score.
 
 ## Compare placement
 

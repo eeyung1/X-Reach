@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 from xreach_api.main import create_app
+from xreach_api.calibration import ReachCalibrationConfig
 from xreach_api.multimodal import MediaUpload, MultimodalService
 from xreach_api.rust_scorer import RustScorer
 
@@ -12,9 +13,11 @@ from xreach_api.rust_scorer import RustScorer
 class FakeRustScorer:
     def __init__(self):
         self.candidates = []
+        self.calibrations = []
 
-    def score(self, candidate):
+    def score(self, candidate, reach_calibration=None):
         self.candidates.append(candidate)
+        self.calibrations.append(reach_calibration)
         predictions = candidate["predictions"]
         weighted = predictions.get("share_via_copy_link", 0.0) * 20
         dropped = candidate.get("visibility_labels", [])
@@ -24,6 +27,10 @@ class FakeRustScorer:
             "author_diversity_multiplier": 1.0,
             "out_of_network_multiplier": candidate.get("oon_multiplier", 1.0),
             "dropped_by": dropped,
+            "reach_potential_percentile": 73.25 if reach_calibration else None,
+            "reach_calibration_status": (
+                reach_calibration["method"] if reach_calibration else "unavailable"
+            ),
         }
 
 
@@ -68,8 +75,8 @@ class FakeMultimodal:
         }
 
 
-def client_with(scorer, multimodal=None):
-    return TestClient(create_app(scorer, multimodal))
+def client_with(scorer, multimodal=None, reach_calibration=None):
+    return TestClient(create_app(scorer, multimodal, reach_calibration))
 
 
 def test_health_reports_api_status_without_building_rust_binary():
@@ -101,6 +108,24 @@ def test_analyze_validates_prediction_heads_and_returns_uncalibrated_score():
     assert payload["placement_recommendation"]["surface"] == "UNDETERMINED"
     assert scorer.candidates[0]["author_id"] == 42
     assert scorer.candidates[0]["in_network"] is False
+
+
+def test_analyze_returns_configured_historical_score_percentile():
+    scorer = FakeRustScorer()
+    calibration = ReachCalibrationConfig(
+        method="empirical", reference_scores=(0.1, 0.2, 0.3)
+    )
+    response = client_with(scorer, reach_calibration=calibration).post(
+        "/api/v1/analyze",
+        json={"text": "A test draft", "predictions": {"favorite": 0.2}},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reach_potential_percentile"] == 73.25
+    assert response.json()["reach_calibration_status"] == "empirical"
+    assert scorer.calibrations == [
+        {"method": "empirical", "reference_scores": [0.1, 0.2, 0.3]}
+    ]
 
 
 def test_analyze_accepts_multipart_media_when_predictions_are_supplied():
@@ -246,6 +271,28 @@ def test_placement_compares_independently_scored_profile_and_root_reply():
     assert scorer.candidates[1]["is_reply"] is True
 
 
+def test_placement_returns_calibrated_percentile_for_recommended_surface():
+    calibration = ReachCalibrationConfig(
+        method="log_normal", log_mean=-2.0, log_std_dev=1.0
+    )
+    response = client_with(
+        FakeRustScorer(), reach_calibration=calibration
+    ).post(
+        "/api/v1/placement",
+        json={
+            "profile_predictions": {"share_via_copy_link": 0.1},
+            "direct_root_reply_predictions": {"share_via_copy_link": 0.4},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recommended_surface"] == "DIRECT_ROOT_REPLY"
+    assert payload["reach_potential_percentile"] == 73.25
+    assert payload["reach_calibration_status"] == "log_normal"
+    assert payload["scores"]["profile"]["reach_calibration_status"] == "log_normal"
+
+
 def test_placement_prefers_surviving_candidate_when_other_is_filtered():
     response = client_with(FakeRustScorer()).post(
         "/api/v1/placement",
@@ -276,3 +323,37 @@ def test_rust_scorer_uses_configured_json_process(tmp_path: Path):
     )
 
     assert result == {"weighted_score": 0.25}
+
+
+def test_rust_scorer_sends_calibration_configuration(tmp_path: Path):
+    executable = tmp_path / "fake-scorer"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "request = json.load(sys.stdin)\n"
+        "print(json.dumps({'method': request['reach_calibration']['method']}))\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+
+    result = RustScorer(binary=str(executable)).score(
+        {"predictions": {"favorite": 0.25}},
+        reach_calibration={"method": "empirical", "reference_scores": [0.1, 0.2]},
+    )
+
+    assert result == {"method": "empirical"}
+
+
+def test_calibration_config_rejects_invalid_reference_data(tmp_path: Path):
+    config_path = tmp_path / "calibration.json"
+    config_path.write_text(
+        json.dumps({"method": "empirical", "reference_scores": [1]}),
+        encoding="utf-8",
+    )
+
+    try:
+        ReachCalibrationConfig.from_file(config_path)
+    except ValueError as error:
+        assert "2 to 1000000" in str(error)
+    else:
+        raise AssertionError("invalid calibration configuration should be rejected")

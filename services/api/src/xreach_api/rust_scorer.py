@@ -28,12 +28,19 @@ class RustScorer:
         self._timeout_seconds = timeout_seconds
         self._build_lock = threading.Lock()
 
-    def score(self, candidate: dict[str, Any]) -> dict[str, Any]:
+    def score(
+        self,
+        candidate: dict[str, Any],
+        reach_calibration: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         binary = self._binary()
+        request = dict(candidate)
+        if reach_calibration is not None:
+            request["reach_calibration"] = reach_calibration
         try:
             completed = subprocess.run(
                 [str(binary)],
-                input=json.dumps(candidate, allow_nan=False),
+                input=json.dumps(request, allow_nan=False),
                 capture_output=True,
                 check=False,
                 text=True,

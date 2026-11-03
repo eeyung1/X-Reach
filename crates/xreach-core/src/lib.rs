@@ -113,6 +113,122 @@ pub struct Score {
     pub dropped_by: Vec<DropReason>,
 }
 
+/// Calibration parameters mapping final Phoenix scores to a percentile.
+/// Empirical samples should be scores from posts with observed reach outcomes;
+/// the percentile describes relative reach potential within that reference set.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ReachCalibration {
+    Empirical { reference_scores: Vec<f64> },
+    LogNormal { log_mean: f64, log_std_dev: f64 },
+}
+
+impl ReachCalibration {
+    /// Build a rank calibration from historical scores, requiring at least two
+    /// finite reference observations.
+    pub fn empirical(reference_scores: &[f64]) -> Result<Self, &'static str> {
+        if reference_scores.len() < 2 || reference_scores.iter().any(|value| !value.is_finite()) {
+            return Err("empirical calibration requires at least two finite scores");
+        }
+        let mut sorted = reference_scores.to_vec();
+        sorted.sort_by(f64::total_cmp);
+        Ok(Self::Empirical { reference_scores: sorted })
+    }
+
+    /// Fit a log-normal score distribution from historical positive scores.
+    pub fn fit_log_normal(reference_scores: &[f64]) -> Result<Self, &'static str> {
+        if reference_scores.len() < 2
+            || reference_scores.iter().any(|value| !value.is_finite() || *value <= 0.0)
+        {
+            return Err("log-normal calibration requires at least two positive finite scores");
+        }
+        let logs: Vec<f64> = reference_scores.iter().map(|value| value.ln()).collect();
+        let log_mean = logs.iter().sum::<f64>() / logs.len() as f64;
+        let variance = logs.iter().map(|value| (value - log_mean).powi(2)).sum::<f64>()
+            / logs.len() as f64;
+        let log_std_dev = variance.sqrt();
+        if !log_std_dev.is_finite() || log_std_dev <= 0.0 {
+            return Err("log-normal calibration scores must have non-zero variance");
+        }
+        Ok(Self::LogNormal { log_mean, log_std_dev })
+    }
+
+    /// Return the calibrated percentile in the inclusive range 0 through 100.
+    pub fn percentile(&self, score: f64) -> Result<f64, &'static str> {
+        if !score.is_finite() {
+            return Err("score must be finite");
+        }
+        match self {
+            Self::Empirical { reference_scores } => {
+                if reference_scores.len() < 2
+                    || reference_scores.iter().any(|value| !value.is_finite())
+                    || reference_scores.windows(2).any(|pair| pair[0] > pair[1])
+                {
+                    return Err("invalid empirical calibration");
+                }
+                let first = reference_scores.partition_point(|value| *value < score);
+                let end = reference_scores.partition_point(|value| *value <= score);
+                if first == end {
+                    if first == 0 {
+                        return Ok(0.0);
+                    }
+                    if first == reference_scores.len() {
+                        return Ok(100.0);
+                    }
+                    let lower = first - 1;
+                    let upper = first;
+                    let fraction = (score - reference_scores[lower])
+                        / (reference_scores[upper] - reference_scores[lower]);
+                    let lower_rank = empirical_group_rank(reference_scores, reference_scores[lower]);
+                    let upper_rank = empirical_group_rank(reference_scores, reference_scores[upper]);
+                    let denominator = (reference_scores.len() - 1) as f64;
+                    let lower_percentile = lower_rank / denominator;
+                    let upper_percentile = upper_rank / denominator;
+                    return Ok((lower_percentile + fraction * (upper_percentile - lower_percentile))
+                        * 100.0);
+                }
+                let midrank = (first + end - 1) as f64 / 2.0;
+                Ok((midrank / (reference_scores.len() - 1) as f64 * 100.0)
+                    .clamp(0.0, 100.0))
+            }
+            Self::LogNormal { log_mean, log_std_dev } => {
+                if !log_mean.is_finite() || !log_std_dev.is_finite() || *log_std_dev <= 0.0 {
+                    return Err("invalid log-normal calibration");
+                }
+                if score <= 0.0 {
+                    return Ok(0.0);
+                }
+                let z = (score.ln() - log_mean) / log_std_dev;
+                Ok(normal_cdf(z) * 100.0)
+            }
+        }
+    }
+
+    pub fn method(&self) -> &'static str {
+        match self {
+            Self::Empirical { .. } => "empirical",
+            Self::LogNormal { .. } => "log_normal",
+        }
+    }
+}
+
+fn empirical_group_rank(reference_scores: &[f64], value: f64) -> f64 {
+    let first = reference_scores.partition_point(|sample| *sample < value);
+    let end = reference_scores.partition_point(|sample| *sample <= value);
+    (first + end - 1) as f64 / 2.0
+}
+
+// Abramowitz-Stegun 7.1.26 approximation; maximum absolute error is below
+// 7.5e-8, sufficient for a user-facing percentile display.
+fn normal_cdf(z: f64) -> f64 {
+    if z <= -8.0 { return 0.0; }
+    if z >= 8.0 { return 1.0; }
+    let x = z.abs() / 2.0_f64.sqrt();
+    let t = 1.0 / (1.0 + 0.3275911 * x);
+    let erf = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t
+        - 0.284496736) * t + 0.254829592) * t * (-x * x).exp();
+    (0.5 * (1.0 + z.signum() * erf)).clamp(0.0, 1.0)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SafetyLabel {
     SpamHighRecall,
@@ -368,5 +484,33 @@ mod tests {
         let scores = score_candidates(&[Candidate::default()], &Weights::default(), 0.5, &signals, &[false]);
         assert_eq!(scores[0].final_score, 0.0);
         assert_eq!(scores[0].dropped_by, vec![DropReason::DoNotAmplify]);
+    }
+
+    #[test]
+    fn empirical_calibration_maps_scores_to_sample_percentile_ranks() {
+        let calibration = ReachCalibration::empirical(&[3.0, 1.0, 2.0, 2.0]).unwrap();
+        assert_eq!(calibration.method(), "empirical");
+        assert_eq!(calibration.percentile(0.0).unwrap(), 0.0);
+        assert_eq!(calibration.percentile(2.0).unwrap(), 50.0);
+        assert_eq!(calibration.percentile(2.5).unwrap(), 75.0);
+        assert_eq!(calibration.percentile(3.0).unwrap(), 100.0);
+        assert_eq!(calibration.percentile(4.0).unwrap(), 100.0);
+    }
+
+    #[test]
+    fn log_normal_calibration_uses_the_fitted_score_distribution() {
+        let calibration = ReachCalibration::fit_log_normal(&[1.0, 4.0]).unwrap();
+        assert_eq!(calibration.method(), "log_normal");
+        assert!((calibration.percentile(2.0).unwrap() - 50.0).abs() < 0.0001);
+        assert_eq!(calibration.percentile(0.0).unwrap(), 0.0);
+        assert!(calibration.percentile(f64::NAN).is_err());
+    }
+
+    #[test]
+    fn calibration_rejects_insufficient_or_invalid_reference_data() {
+        assert!(ReachCalibration::empirical(&[1.0]).is_err());
+        assert!(ReachCalibration::empirical(&[1.0, f64::INFINITY]).is_err());
+        assert!(ReachCalibration::fit_log_normal(&[0.0, 2.0]).is_err());
+        assert!(ReachCalibration::fit_log_normal(&[2.0, 2.0]).is_err());
     }
 }

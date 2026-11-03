@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read};
 use xreach_core::{
-    score_candidates, Candidate, DropReason, Predictions, SafetyLabel, VisibilitySignals, Weights,
+    score_candidates, Candidate, DropReason, Predictions, ReachCalibration, SafetyLabel,
+    VisibilitySignals, Weights,
 };
 
 #[derive(Deserialize)]
 struct ScoreRequest {
+    #[serde(default)]
+    reach_calibration: Option<ReachCalibrationInput>,
     #[serde(default)]
     predictions: PredictionInput,
     #[serde(default)]
@@ -28,6 +31,31 @@ struct ScoreRequest {
     has_untrusted_external_url: bool,
     #[serde(default = "one")]
     oon_multiplier: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "method", rename_all = "snake_case")]
+enum ReachCalibrationInput {
+    Empirical { reference_scores: Vec<f64> },
+    LogNormal { log_mean: f64, log_std_dev: f64 },
+}
+
+impl TryFrom<ReachCalibrationInput> for ReachCalibration {
+    type Error = &'static str;
+
+    fn try_from(input: ReachCalibrationInput) -> Result<Self, Self::Error> {
+        match input {
+            ReachCalibrationInput::Empirical { reference_scores } => {
+                ReachCalibration::empirical(&reference_scores)
+            }
+            ReachCalibrationInput::LogNormal { log_mean, log_std_dev } => {
+                if !log_mean.is_finite() || !log_std_dev.is_finite() || log_std_dev <= 0.0 {
+                    return Err("log-normal parameters must be finite and standard deviation positive");
+                }
+                Ok(ReachCalibration::LogNormal { log_mean, log_std_dev })
+            }
+        }
+    }
 }
 
 #[derive(Default, Deserialize)]
@@ -88,6 +116,8 @@ struct ScoreResponse {
     author_diversity_multiplier: f64,
     out_of_network_multiplier: f64,
     dropped_by: Vec<&'static str>,
+    reach_potential_percentile: Option<f64>,
+    reach_calibration_status: &'static str,
 }
 
 fn one() -> f64 {
@@ -132,12 +162,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         &[request.has_nsfw_media],
     );
     let score = scores.first().ok_or("scorer returned no candidate")?;
+    let calibration = request.reach_calibration.map(ReachCalibration::try_from).transpose()?;
     let response = ScoreResponse {
         weighted_score: score.weighted,
         final_score: score.final_score,
         author_diversity_multiplier: score.author_diversity_multiplier,
         out_of_network_multiplier: score.out_of_network_multiplier,
         dropped_by: score.dropped_by.iter().map(drop_name).collect(),
+        reach_potential_percentile: calibration
+            .as_ref()
+            .map(|model| model.percentile(score.final_score))
+            .transpose()?,
+        reach_calibration_status: calibration
+            .as_ref()
+            .map(ReachCalibration::method)
+            .unwrap_or("unavailable"),
     };
     println!("{}", serde_json::to_string(&response)?);
     Ok(())

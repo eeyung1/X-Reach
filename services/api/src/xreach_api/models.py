@@ -152,8 +152,8 @@ class MultimodalOutput(BaseModel):
 
 class AnalyzeResponse(BaseModel):
     algorithmic_viability_score: float
-    reach_potential_percentile: None = None
-    reach_calibration_status: Literal["unavailable"] = "unavailable"
+    reach_potential_percentile: float | None = Field(default=None, ge=0, le=100)
+    reach_calibration_status: Literal["unavailable", "empirical", "log_normal"] = "unavailable"
     score: ScoreOutput
     placement_recommendation: dict[str, str]
     suggested_tweaks: list[str]

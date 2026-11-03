@@ -11,6 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ValidationError
 from starlette.datastructures import UploadFile
 
+from .calibration import ReachCalibrationConfig
 from .models import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -35,18 +36,25 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 def create_app(
     scorer: RustScorer | None = None,
     multimodal: MultimodalBackend | None = None,
+    reach_calibration: ReachCalibrationConfig | None = None,
 ) -> FastAPI:
+    calibration = (
+        reach_calibration
+        if reach_calibration is not None
+        else ReachCalibrationConfig.from_environment()
+    )
     app = FastAPI(
         title="X-Reach API",
         version="0.1.0",
         description=(
             "Extracts local multimodal draft signals and scores their Phoenix "
-            "prediction heads with the Rust core. No calibrated reach-percentile "
-            "model is configured."
+            "prediction heads with the Rust core. Reach percentiles are available "
+            "when a historical score calibration is configured."
         ),
     )
     app.state.scorer = scorer or RustScorer()
     app.state.multimodal = multimodal or MultimodalService()
+    app.state.reach_calibration = calibration
 
     @app.get("/healthz")
     def health() -> dict[str, str]:
@@ -71,9 +79,14 @@ def create_app(
                 **automatic.model_dump(exclude={"text", "media_attached"}),
             )
 
-        rust_result = await run_in_threadpool(_score, app.state.scorer, data)
+        rust_result = await run_in_threadpool(
+            _score, app.state.scorer, data, app.state.reach_calibration
+        )
+        reach_percentile, reach_status = _reach_output(rust_result)
         return AnalyzeResponse(
             algorithmic_viability_score=rust_result["final_score"],
+            reach_potential_percentile=reach_percentile,
+            reach_calibration_status=reach_status,
             score=_score_output(rust_result),
             placement_recommendation={
                 "surface": "UNDETERMINED",
@@ -83,7 +96,13 @@ def create_app(
                 ),
             },
             suggested_tweaks=[
-                "Reach percentile is unavailable until a calibration model is configured.",
+                *(
+                    [
+                        "Reach percentile is unavailable until a calibration model is configured."
+                    ]
+                    if reach_status == "unavailable"
+                    else []
+                ),
                 *(
                     ["Treat action propensities as an uncalibrated model proxy."]
                     if extracted is not None
@@ -131,8 +150,12 @@ def create_app(
             has_untrusted_external_url=data.direct_root_reply_has_untrusted_external_url,
             **common,
         )
-        profile_result = _score(app.state.scorer, profile)
-        reply_result = _score(app.state.scorer, root_reply)
+        profile_result = _score(
+            app.state.scorer, profile, app.state.reach_calibration
+        )
+        reply_result = _score(
+            app.state.scorer, root_reply, app.state.reach_calibration
+        )
         if profile_result["dropped_by"] and reply_result["dropped_by"]:
             surface = "NO_SAFE_SURFACE"
             reasoning = "Both placement candidates trigger visibility drops; revise the draft before posting."
@@ -148,17 +171,34 @@ def create_app(
         else:
             surface = "PROFILE_POST"
             reasoning = "The supplied model predictions score as well or higher for a profile post."
+        recommended_result = (
+            reply_result
+            if surface == "DIRECT_ROOT_REPLY"
+            else profile_result if surface == "PROFILE_POST" else None
+        )
+        reach_percentile, reach_status = (
+            _reach_output(recommended_result)
+            if recommended_result is not None
+            else (None, "unavailable")
+        )
         return {
             "recommended_surface": surface,
             "reasoning": reasoning,
-            "reach_potential_percentile": None,
-            "reach_calibration_status": "unavailable",
+            "reach_potential_percentile": reach_percentile,
+            "reach_calibration_status": reach_status,
             "scores": {
-                "profile": _score_output(profile_result).model_dump(),
-                "direct_root_reply": _score_output(reply_result).model_dump(),
+                "profile": {
+                    **_score_output(profile_result).model_dump(),
+                    "reach_potential_percentile": _reach_output(profile_result)[0],
+                    "reach_calibration_status": _reach_output(profile_result)[1],
+                },
+                "direct_root_reply": {
+                    **_score_output(reply_result).model_dump(),
+                    "reach_potential_percentile": _reach_output(reply_result)[0],
+                    "reach_calibration_status": _reach_output(reply_result)[1],
+                },
             },
         }
-
     return app
 
 
@@ -244,14 +284,40 @@ def _extract(
         ) from error
 
 
-def _score(scorer: RustScorer, candidate: CandidateInput) -> dict[str, Any]:
+def _score(
+    scorer: RustScorer,
+    candidate: CandidateInput,
+    reach_calibration: ReachCalibrationConfig | None = None,
+) -> dict[str, Any]:
     payload = candidate.model_dump(
         mode="json", exclude_none=True, exclude={"text", "media_attached"}
     )
     try:
-        return scorer.score(payload)
+        config = reach_calibration.to_payload() if reach_calibration else None
+        return scorer.score(payload, reach_calibration=config)
     except ScorerUnavailable as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+def _reach_output(result: dict[str, Any]) -> tuple[float | None, str]:
+    status = result.get("reach_calibration_status", "unavailable")
+    percentile = result.get("reach_potential_percentile")
+    if status == "unavailable":
+        return None, "unavailable"
+    if status not in {"empirical", "log_normal"}:
+        raise HTTPException(
+            status_code=503,
+            detail="Rust scorer returned an unknown reach calibration status",
+        )
+    if (
+        not isinstance(percentile, (float, int))
+        or isinstance(percentile, bool)
+        or not 0 <= percentile <= 100
+    ):
+        raise HTTPException(
+            status_code=503, detail="Rust scorer returned an invalid reach percentile"
+        )
+    return float(percentile), status
 
 
 def _score_output(result: dict[str, Any]) -> ScoreOutput:
