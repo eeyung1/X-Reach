@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, 'agent/**', 'feature/**' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  rust:
+    name: Rust Core Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run Cargo Tests
+        run: |
+          if [ -f crates/xreach-core/Cargo.toml ]; then
+            cargo test --manifest-path crates/xreach-core/Cargo.toml --verbose
+          else
+            echo "crates/xreach-core/Cargo.toml not present in this branch"
+          fi
+
+  web:
+    name: Web Drop-Zone Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build Web App
+        run: |
+          if [ -f web/package.json ]; then
+            cd web
+            npm install
+            npm run build
+          else
+            echo "web/package.json not present in this branch"
+          fi
+
+  radar:
+    name: Radar Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run Radar Tests
+        run: |
+          if [ -d services/radar/tests ]; then
+            cd services/radar
+            pip install pytest
+            pip install -e . || true
+            pytest
+          else
+            echo "services/radar/tests not present in this branch"
+          fi
