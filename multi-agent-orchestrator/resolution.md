@@ -315,3 +315,81 @@ Append-only completed-work evidence.
 - GitHub Actions CI Run: 41668260854
 - CI Conclusion: SUCCESS (Next.js production build + TypeScript passed)
 - Integrated into main: commit 0499947 via no-ff merge.
+
+## task-docker-services — codex-b7e4-docker-services-20261103
+- Session: Codex-20261103-b7e4-20261103-6966feff
+- State: COMPLETE
+- Validation: /usr/bin/git show --check --oneline HEAD
+- Evidence: 218ac88 feat: add multi-stage API container
+- Recorded UTC: 2026-11-03T16:13:24Z
+
+### task-docker-services handoff evidence
+- Feature/session: task-docker-services / Codex-20261103-b7e4-20261103-6966feff.
+- Branch/worktree: agent/task-docker-services at .agent-worktrees/task-docker-services.
+- Commit: 218ac88bbf7525917ad3d8c8365a1f3930f6f9a0.
+- Files: docker/Dockerfile.api; docker/Dockerfile.api.dockerignore; docker/README.md.
+- Implementation: multi-stage Rust scorer and Python API image, OpenCLIP inference dependencies, unprivileged runtime, model/data volumes, `/healthz` health check and repository-root build/run instructions.
+- Validation passed: Dockerfile static requirement checks; `git diff --check`; `git show --check --oneline HEAD`.
+- Acceptance validation not run: `docker build -f docker/Dockerfile.api -t x-reach-api .` (Docker and Podman are not installed); `pytest services/api/tests/ -q` (`pytest` is not installed). `uv run --offline --project services/api --extra test pytest services/api/tests/ -q` could not resolve FastAPI because the offline cache lacks the project's `>=0.115,<1.0` range.
+- Remaining gates: run Docker image build and API test suite in CI or a container-capable environment; verify the image health check.
+- Next action: Planner/Integrator publishes and validates the exact commit, then integrates after acceptance checks pass.
+
+## task-docker-web — codex-b7e4-docker-web-20261103
+- Session: Codex-20261103-b7e4-20261103-a126cf56
+- State: COMPLETE
+- Validation: /usr/bin/git show --check --oneline HEAD
+- Evidence: 33aa2ae feat: add standalone web container
+- Recorded UTC: 2026-11-03T16:19:00Z
+
+### task-docker-web handoff evidence
+- Feature/session: task-docker-web / Codex-20261103-b7e4-20261103-a126cf56.
+- Branch/worktree: agent/task-docker-web at .agent-worktrees/task-docker-web.
+- Commit: 33aa2aeebc5a6950e0d623c239db1e0d3a26ac1e.
+- Files: docker/Dockerfile.web; docker/Dockerfile.web.dockerignore; docker/README.web.md; web/next.config.ts.
+- Implementation: multi-stage Node 22 Alpine image builds the Next standalone output and runs a nonroot server with port/host environment settings and a health check. Added per-Dockerfile context exclusions and deployment instructions noting same-origin API routing.
+- Validation passed: `npm --prefix web run build -- --webpack` with local dependencies physically inside the worktree; TypeScript and standalone tracing completed without an external trace warning; `git diff --check`; `git show --check --oneline HEAD`.
+- Acceptance validation not run: `docker build -f docker/Dockerfile.web -t x-reach-web .` (Docker and Podman are not installed). Standalone server smoke test could not bind `127.0.0.1:3100` (`listen EPERM` under this sandbox).
+- Remaining gates: build the image and check container health in CI or a container-capable environment.
+- Next action: Planner/Integrator publishes and validates the exact commit, then integrates after acceptance checks pass.
+
+## task-radar-daemon-runner handoff — 2026-11-03T16:21:31Z
+- Owner/session: GPT56Sol-20261103-radard-6a8f-20261103-618f0d4a
+- Branch/worktree: `agent/task-radar-daemon-runner` / `/home/recoding/Projects/X/X-Reach/.agent-worktrees/task-radar-daemon-runner`
+- Claim: `gpt56sol-radard-6a8f-20261103` for `services/radar/,services/api/`
+- Commit: `85598b6` (`feat: add radar ingestion daemon`)
+- Implementation: standalone offline HAR/GraphQL/CDP replay and live REA scenario daemon; retry-safe deduplication; SIGTERM/SIGINT shutdown; bearer-authenticated API batch ingestion into the SSE ring.
+- Validation passed: radar pytest (24 passed); API pytest (21 passed); targeted Ruff lint/format; compileall; staged diff check.
+- Limitation: no real authenticated X browser scenario or container runtime was exercised locally; live REA behavior remains an integration gate.
+- PR/CI/deployment: not performed by worker per decoupled publication policy.
+- Next action: Planner/Integrator publishes the branch, runs remote CI, and integrates after review.
+
+## task-radar-daemon-runner — gpt56sol-radard-6a8f-20261103
+- Session: GPT56Sol-20261103-radard-6a8f-20261103-618f0d4a
+- State: COMPLETE
+- Validation: /home/recoding/.local/bin/uv run --no-project --with pytest pytest services/radar/tests/
+- Evidence: ============================= test session starts ==============================; platform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0; rootdir: /home/recoding/Projects/X/X-Reach/.agent-worktrees/task-radar-daemon-runner/services/radar; configfile: pyproject.toml; collected 24 items; ; services/radar/tests/test_cdp_client.py .....                            [ 20%]; services/radar/tests/test_daemon.py ....                                 [ 37%]; services/radar/tests/test_graphql_sniffer.py ....                        [ 54%]; services/radar/tests/test_seed_scout.py .....                            [ 75%]; services/radar/tests/test_simclusters.py ......                          [100%]; ; ============================== 24 passed in 0.22s ==============================
+- Recorded UTC: 2026-11-03T16:21:49Z
+
+### task-docker-services integration evidence
+- Feature: task-docker-services
+- Planner / Integrator: planner-agent-01
+- Remote Branch: origin/agent/task-docker-services (HEAD 218ac88bbf7525917ad3d8c8365a1f3930f6f9a0)
+- GitHub Actions CI Run: 41672653961
+- CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone, API Tests, Radar Tests)
+- Integrated into main: commit via no-ff merge.
+
+### task-docker-web integration evidence
+- Feature: task-docker-web
+- Planner / Integrator: planner-agent-01
+- Remote Branch: origin/agent/task-docker-web (HEAD e0c992c60bb1a30542dadf8a0b149699af1042d9)
+- GitHub Actions CI Run: 41674035413
+- CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone, API Tests, Radar Tests)
+- Integrated into main: commit via no-ff merge.
+
+### task-radar-daemon-runner integration evidence
+- Feature: task-radar-daemon-runner
+- Planner / Integrator: planner-agent-01
+- Remote Branch: origin/agent/task-radar-daemon-runner (HEAD 80d9bbbcb765fb76d13db5835b8e7e2c7f53a8e3)
+- GitHub Actions CI Run: 41674390970
+- CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone, API Tests [21/21 passed], Radar Tests [24/24 passed])
+- Integrated into main: commit via no-ff merge.
