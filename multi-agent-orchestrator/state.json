@@ -1,0 +1,40 @@
+{
+  "authority": {
+    "repository_id": "local-git:/home/recoding/Projects/X/X-Reach#/home/recoding/Projects/X/X-Reach/.git",
+    "protocol": "orchestrator/v1",
+    "schema": 4,
+    "generation": 3,
+    "enrollment": "NATIVE",
+    "provenance": "Human operator initialized project coordination",
+    "enrolled_utc": "2026-11-03T12:27:34Z"
+  },
+  "sessions": {
+    "planner-agent-01": {
+      "id": "planner-agent-01",
+      "role": "planner",
+      "state": "ACTIVE",
+      "generation": 3
+    }
+  },
+  "claims": {},
+  "objectives": {},
+  "tasks": {},
+  "results": {},
+  "reviews": {},
+  "events": [
+    {
+      "id": "2-authority-enrollment",
+      "actor": "ORCHESTRATOR",
+      "operation": "authority-enrollment",
+      "generation": 2,
+      "utc": "2026-11-03T12:27:34Z"
+    },
+    {
+      "id": "3-planner-registration",
+      "actor": "planner-agent-01",
+      "operation": "register-session",
+      "generation": 3,
+      "utc": "2026-11-03T12:37:00Z"
+    }
+  ]
+}
