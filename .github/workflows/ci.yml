@@ -118,9 +118,10 @@ jobs:
         run: |
           mkdir -p data && chmod 777 data || true
           if ! ./scripts/start.sh up; then
-            ERR=$(docker compose logs --tail=15 2>&1 | tr '\n' ' | ' | head -c 1000)
-            STATUS=$(docker compose ps -a 2>&1 | tr '\n' ' | ' | head -c 500)
-            echo "::error title=Compose Failure::Status: $STATUS | Logs: $ERR"
+            echo "::error title=Compose PS::$(docker compose ps -a --format '{{.Name}} {{.Status}} {{.ExitCode}}' 2>&1 | tr '\n' ' | ')"
+            echo "::error title=Web Logs::$(docker compose logs web 2>&1 | tail -n 20 | tr '\n' ' | ')"
+            echo "::error title=API Logs::$(docker compose logs api 2>&1 | tail -n 20 | tr '\n' ' | ')"
+            echo "::error title=Gateway Logs::$(docker compose logs gateway 2>&1 | tail -n 20 | tr '\n' ' | ')"
             exit 1
           fi
       - name: Verify Gateway Health
