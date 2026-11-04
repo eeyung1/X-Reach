@@ -1,14 +1,16 @@
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read};
 use xreach_core::{
-    score_candidates, Candidate, DropReason, Predictions, ReachCalibration, SafetyLabel,
+    score_candidates, Candidate, DropReason, Predictions, SafetyLabel, ScoreCalibration,
     VisibilitySignals, Weights,
 };
 
+const PERCENTILE_CONFIDENCE_LEVEL: f64 = 0.95;
+
 #[derive(Deserialize)]
 struct ScoreRequest {
-    #[serde(default)]
-    reach_calibration: Option<ReachCalibrationInput>,
+    #[serde(default, alias = "reach_calibration")]
+    score_calibration: Option<ScoreCalibrationInput>,
     #[serde(default)]
     predictions: PredictionInput,
     #[serde(default)]
@@ -35,24 +37,32 @@ struct ScoreRequest {
 
 #[derive(Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case")]
-enum ReachCalibrationInput {
+enum ScoreCalibrationInput {
     Empirical { reference_scores: Vec<f64> },
     LogNormal { log_mean: f64, log_std_dev: f64 },
 }
 
-impl TryFrom<ReachCalibrationInput> for ReachCalibration {
+impl TryFrom<ScoreCalibrationInput> for ScoreCalibration {
     type Error = &'static str;
 
-    fn try_from(input: ReachCalibrationInput) -> Result<Self, Self::Error> {
+    fn try_from(input: ScoreCalibrationInput) -> Result<Self, Self::Error> {
         match input {
-            ReachCalibrationInput::Empirical { reference_scores } => {
-                ReachCalibration::empirical(&reference_scores)
+            ScoreCalibrationInput::Empirical { reference_scores } => {
+                ScoreCalibration::empirical(&reference_scores)
             }
-            ReachCalibrationInput::LogNormal { log_mean, log_std_dev } => {
+            ScoreCalibrationInput::LogNormal {
+                log_mean,
+                log_std_dev,
+            } => {
                 if !log_mean.is_finite() || !log_std_dev.is_finite() || log_std_dev <= 0.0 {
-                    return Err("log-normal parameters must be finite and standard deviation positive");
+                    return Err(
+                        "log-normal parameters must be finite and standard deviation positive",
+                    );
                 }
-                Ok(ReachCalibration::LogNormal { log_mean, log_std_dev })
+                Ok(ScoreCalibration::LogNormal {
+                    log_mean,
+                    log_std_dev,
+                })
             }
         }
     }
@@ -110,14 +120,23 @@ impl From<PredictionInput> for Predictions {
 }
 
 #[derive(Serialize)]
+struct PercentileBounds {
+    lower: f64,
+    upper: f64,
+    confidence_level: f64,
+    method: &'static str,
+}
+
+#[derive(Serialize)]
 struct ScoreResponse {
     weighted_score: f64,
     final_score: f64,
     author_diversity_multiplier: f64,
     out_of_network_multiplier: f64,
     dropped_by: Vec<&'static str>,
-    reach_potential_percentile: Option<f64>,
-    reach_calibration_status: &'static str,
+    model_score_percentile: Option<f64>,
+    model_score_percentile_bounds: Option<PercentileBounds>,
+    score_calibration_status: &'static str,
 }
 
 fn one() -> f64 {
@@ -162,20 +181,36 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         &[request.has_nsfw_media],
     );
     let score = scores.first().ok_or("scorer returned no candidate")?;
-    let calibration = request.reach_calibration.map(ReachCalibration::try_from).transpose()?;
+    let calibration = request
+        .score_calibration
+        .map(ScoreCalibration::try_from)
+        .transpose()?;
+    let model_score_percentile = calibration
+        .as_ref()
+        .map(|model| model.percentile(score.final_score))
+        .transpose()?;
+    let model_score_percentile_bounds = calibration
+        .as_ref()
+        .map(|model| model.percentile_bounds(score.final_score, PERCENTILE_CONFIDENCE_LEVEL))
+        .transpose()?
+        .flatten()
+        .map(|(lower, upper)| PercentileBounds {
+            lower,
+            upper,
+            confidence_level: PERCENTILE_CONFIDENCE_LEVEL,
+            method: "dkw",
+        });
     let response = ScoreResponse {
         weighted_score: score.weighted,
         final_score: score.final_score,
         author_diversity_multiplier: score.author_diversity_multiplier,
         out_of_network_multiplier: score.out_of_network_multiplier,
         dropped_by: score.dropped_by.iter().map(drop_name).collect(),
-        reach_potential_percentile: calibration
+        model_score_percentile,
+        model_score_percentile_bounds,
+        score_calibration_status: calibration
             .as_ref()
-            .map(|model| model.percentile(score.final_score))
-            .transpose()?,
-        reach_calibration_status: calibration
-            .as_ref()
-            .map(ReachCalibration::method)
+            .map(ScoreCalibration::method)
             .unwrap_or("unavailable"),
     };
     println!("{}", serde_json::to_string(&response)?);

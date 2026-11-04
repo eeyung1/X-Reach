@@ -113,16 +113,17 @@ pub struct Score {
     pub dropped_by: Vec<DropReason>,
 }
 
-/// Calibration parameters mapping final Phoenix scores to a percentile.
-/// Empirical samples should be scores from posts with observed reach outcomes;
-/// the percentile describes relative reach potential within that reference set.
+/// Calibration parameters mapping final model scores to a percentile.
+///
+/// A percentile describes only the score's relative position in the configured
+/// reference distribution. It is not a probability of reach or virality.
 #[derive(Clone, Debug, PartialEq)]
-pub enum ReachCalibration {
+pub enum ScoreCalibration {
     Empirical { reference_scores: Vec<f64> },
     LogNormal { log_mean: f64, log_std_dev: f64 },
 }
 
-impl ReachCalibration {
+impl ScoreCalibration {
     /// Build a rank calibration from historical scores, requiring at least two
     /// finite reference observations.
     pub fn empirical(reference_scores: &[f64]) -> Result<Self, &'static str> {
@@ -207,6 +208,39 @@ impl ReachCalibration {
         match self {
             Self::Empirical { .. } => "empirical",
             Self::LogNormal { .. } => "log_normal",
+        }
+    }
+
+    /// Return a distribution-free confidence band for an empirical percentile.
+    ///
+    /// The band uses the Dvoretzky-Kiefer-Wolfowitz inequality, so its width
+    /// honestly reflects the size of the configured reference sample. A
+    /// log-normal calibration stores no fit sample size or parameter covariance,
+    /// so statistically defensible bounds cannot be derived and `None` is
+    /// returned instead of fabricating precision.
+    pub fn percentile_bounds(
+        &self,
+        score: f64,
+        confidence_level: f64,
+    ) -> Result<Option<(f64, f64)>, &'static str> {
+        if !confidence_level.is_finite() || !(0.0 < confidence_level && confidence_level < 1.0) {
+            return Err("confidence level must be between zero and one");
+        }
+        let percentile = self.percentile(score)?;
+        match self {
+            Self::Empirical { reference_scores } => {
+                if reference_scores.len() < 2 {
+                    return Err("invalid empirical calibration");
+                }
+                let alpha = 1.0 - confidence_level;
+                let margin = (2.0 / alpha).ln() / (2.0 * reference_scores.len() as f64);
+                let margin = margin.sqrt() * 100.0;
+                Ok(Some((
+                    (percentile - margin).clamp(0.0, 100.0),
+                    (percentile + margin).clamp(0.0, 100.0),
+                )))
+            }
+            Self::LogNormal { .. } => Ok(None),
         }
     }
 }
@@ -488,7 +522,7 @@ mod tests {
 
     #[test]
     fn empirical_calibration_maps_scores_to_sample_percentile_ranks() {
-        let calibration = ReachCalibration::empirical(&[3.0, 1.0, 2.0, 2.0]).unwrap();
+        let calibration = ScoreCalibration::empirical(&[3.0, 1.0, 2.0, 2.0]).unwrap();
         assert_eq!(calibration.method(), "empirical");
         assert_eq!(calibration.percentile(0.0).unwrap(), 0.0);
         assert_eq!(calibration.percentile(2.0).unwrap(), 50.0);
@@ -499,7 +533,7 @@ mod tests {
 
     #[test]
     fn log_normal_calibration_uses_the_fitted_score_distribution() {
-        let calibration = ReachCalibration::fit_log_normal(&[1.0, 4.0]).unwrap();
+        let calibration = ScoreCalibration::fit_log_normal(&[1.0, 4.0]).unwrap();
         assert_eq!(calibration.method(), "log_normal");
         assert!((calibration.percentile(2.0).unwrap() - 50.0).abs() < 0.0001);
         assert_eq!(calibration.percentile(0.0).unwrap(), 0.0);
@@ -508,9 +542,27 @@ mod tests {
 
     #[test]
     fn calibration_rejects_insufficient_or_invalid_reference_data() {
-        assert!(ReachCalibration::empirical(&[1.0]).is_err());
-        assert!(ReachCalibration::empirical(&[1.0, f64::INFINITY]).is_err());
-        assert!(ReachCalibration::fit_log_normal(&[0.0, 2.0]).is_err());
-        assert!(ReachCalibration::fit_log_normal(&[2.0, 2.0]).is_err());
+        assert!(ScoreCalibration::empirical(&[1.0]).is_err());
+        assert!(ScoreCalibration::empirical(&[1.0, f64::INFINITY]).is_err());
+        assert!(ScoreCalibration::fit_log_normal(&[0.0, 2.0]).is_err());
+        assert!(ScoreCalibration::fit_log_normal(&[2.0, 2.0]).is_err());
+    }
+
+    #[test]
+    fn empirical_percentile_bounds_reflect_reference_sample_uncertainty() {
+        let calibration =
+            ScoreCalibration::empirical(&(0..100).map(f64::from).collect::<Vec<_>>()).unwrap();
+        let (lower, upper) = calibration.percentile_bounds(50.0, 0.95).unwrap().unwrap();
+        assert!(lower < 50.505);
+        assert!(upper > 50.505);
+        assert!((lower - 36.923).abs() < 0.01);
+        assert!((upper - 64.087).abs() < 0.01);
+        assert!(calibration.percentile_bounds(50.0, 1.0).is_err());
+    }
+
+    #[test]
+    fn log_normal_percentile_does_not_fabricate_uncertainty_bounds() {
+        let calibration = ScoreCalibration::fit_log_normal(&[1.0, 4.0]).unwrap();
+        assert_eq!(calibration.percentile_bounds(2.0, 0.95).unwrap(), None);
     }
 }

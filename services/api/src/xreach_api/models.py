@@ -151,23 +151,40 @@ class MultimodalOutput(BaseModel):
         return value
 
 
+class PercentileBounds(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lower: float = Field(ge=0, le=100)
+    upper: float = Field(ge=0, le=100)
+    confidence_level: float = Field(gt=0, lt=1)
+    method: Literal["dkw"]
+
+    @model_validator(mode="after")
+    def require_ordered_bounds(self) -> PercentileBounds:
+        if self.lower > self.upper:
+            raise ValueError("percentile lower bound cannot exceed upper bound")
+        return self
+
+
 class AnalyzeResponse(BaseModel):
     algorithmic_viability_score: float
-    reach_potential_percentile: float | None = Field(default=None, ge=0, le=100)
-    reach_calibration_status: Literal["unavailable", "empirical", "log_normal"] = (
+    model_score_percentile: float | None = Field(default=None, ge=0, le=100)
+    model_score_percentile_bounds: PercentileBounds | None = None
+    score_calibration_status: Literal["unavailable", "empirical", "log_normal"] = (
         "unavailable"
     )
     score: ScoreOutput
     placement_recommendation: dict[str, str]
     suggested_tweaks: list[str]
     model_name: str | None = None
-    semantic_id: list[int] | None = None
+    local_topic_codes: list[int] | None = None
     predicted_probabilities: Predictions | None = None
     modalities: list[str] = Field(default_factory=list)
     keyframes: list[KeyframeOutput] = Field(default_factory=list)
     video_duration_seconds: float | None = None
     quantizer_status: str | None = None
     propensity_status: str | None = None
+    model_limitations: list[str]
 
 
 class RadarIngestRequest(BaseModel):

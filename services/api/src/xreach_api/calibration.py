@@ -1,4 +1,4 @@
-"""Load and validate configured Phoenix-score percentile calibration."""
+"""Load and validate configured model-score percentile calibration."""
 
 from __future__ import annotations
 
@@ -11,25 +11,29 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class ReachCalibrationConfig:
+class ScoreCalibrationConfig:
     method: str
     reference_scores: tuple[float, ...] = ()
     log_mean: float | None = None
     log_std_dev: float | None = None
 
     @classmethod
-    def from_environment(cls) -> ReachCalibrationConfig | None:
-        path = os.environ.get("XREACH_REACH_CALIBRATION_FILE")
+    def from_environment(cls) -> ScoreCalibrationConfig | None:
+        path = os.environ.get("XREACH_SCORE_CALIBRATION_FILE") or os.environ.get(
+            "XREACH_REACH_CALIBRATION_FILE"
+        )
         return cls.from_file(path) if path else None
 
     @classmethod
-    def from_file(cls, path: str | Path) -> ReachCalibrationConfig:
+    def from_file(cls, path: str | Path) -> ScoreCalibrationConfig:
         try:
             value = json.loads(Path(path).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
-            raise ValueError(f"could not read reach calibration file: {error}") from error
+            raise ValueError(
+                f"could not read score calibration file: {error}"
+            ) from error
         if not isinstance(value, dict):
-            raise ValueError("reach calibration file must contain a JSON object")
+            raise ValueError("score calibration file must contain a JSON object")
         method = value.get("method")
         if method == "empirical":
             scores = value.get("reference_scores")
@@ -38,8 +42,7 @@ class ReachCalibrationConfig:
                 or len(scores) < 2
                 or len(scores) > 1_000_000
                 or any(
-                    isinstance(score, bool)
-                    or not isinstance(score, (int, float))
+                    isinstance(score, bool) or not isinstance(score, (int, float))
                     for score in scores
                 )
             ):
@@ -49,7 +52,9 @@ class ReachCalibrationConfig:
             try:
                 normalized_scores = tuple(map(float, scores))
             except (OverflowError, ValueError) as error:
-                raise ValueError("empirical calibration scores must be finite") from error
+                raise ValueError(
+                    "empirical calibration scores must be finite"
+                ) from error
             if not all(math.isfinite(score) for score in normalized_scores):
                 raise ValueError("empirical calibration scores must be finite")
             return cls(method="empirical", reference_scores=normalized_scores)
@@ -85,7 +90,7 @@ class ReachCalibrationConfig:
                 log_mean=log_mean,
                 log_std_dev=log_std_dev,
             )
-        raise ValueError("reach calibration method must be empirical or log_normal")
+        raise ValueError("score calibration method must be empirical or log_normal")
 
     def to_payload(self) -> dict[str, Any]:
         if self.method == "empirical":
@@ -98,3 +103,7 @@ class ReachCalibrationConfig:
             "log_mean": self.log_mean,
             "log_std_dev": self.log_std_dev,
         }
+
+
+# Internal compatibility for callers that imported the pre-audit class name.
+ReachCalibrationConfig = ScoreCalibrationConfig
