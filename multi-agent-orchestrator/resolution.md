@@ -498,3 +498,26 @@ Append-only completed-work evidence.
 - Acceptance gate: `COMPOSE_PROJECT_NAME=xreach-task22 XREACH_HTTP_PORT=18082 XREACH_E2E_WEBHOOK_PORT=18083 scripts/e2e.sh -v` was stopped after the API image dependency install spent over 35 minutes downloading the 539 MB PyTorch wheel without completing the build. The isolated Compose project had no containers when inspected. `pytest` was unavailable in the system Python; it was installed in `/tmp/xreach-task22-venv` but the E2E suite was not run.
 - Next action: rerun `scripts/e2e.sh -v` with pytest available and Docker image dependencies cached; resolve any runtime failures before treating task 22 as complete. Planner/integrator owns publication and integration. Coordination caveat: the Markdown session is BLOCKED and the claim ledger is empty, but structured `state.json` still reports this session ACTIVE after release; orchestrator status inspection also refuses the current ledger/state combination.
 - Recorded UTC: 2026-11-04T19:08:34Z
+
+### task-alert-compose-e2e CI network-fix follow-up
+- Planner finding: CI run 41895009455 on e36f0a1 failed because the API container posted to the host-mapped 127.0.0.1 address.
+- Fix commit: 6d80232ad2108195f1067b7952c25f7485de32f0 on `agent/task-alert-compose-e2e`.
+- Changed `tests/e2e/test_compose_stack.py` to register `WEBHOOK_DISPATCH_URL` (default `http://webhook-listener:9000/events`) and poll `WEBHOOK_QUERY_URL` (default `http://127.0.0.1:${XREACH_E2E_WEBHOOK_PORT:-18081}/events`), with separate environment overrides.
+- Validation passed: `python3 -m py_compile tests/e2e/test_compose_stack.py`; `git diff --check`.
+- Remaining gate: rerun CI / `pytest tests/e2e/ -v`; this follow-up does not itself establish task 22 acceptance.
+- Recorded UTC: 2026-11-04T19:23:18Z
+
+### task-alert-compose-e2e default listener follow-up
+- Commit: fe530e44ff7e15af9a5e4eefc16238b263e2e765 on `agent/task-alert-compose-e2e`.
+- Change: removed `profiles: [e2e]` from the webhook-listener service so the service starts with the default Compose stack.
+- Validation passed: `docker compose config -q`; `git diff --check`.
+- Handoff: operator will publish the branch and run CI. Worker did not push or merge.
+- Recorded UTC: 2026-11-04T19:30:58Z
+
+### task-alert-compose-e2e integration evidence
+- Feature: task-alert-compose-e2e
+- Planner / Integrator: planner-agent-01
+- Remote Branch: origin/agent/task-alert-compose-e2e (HEAD fe530e44ff7e15af9a5e4eefc16238b263e2e765)
+- GitHub Actions CI Run: 41897970581
+- CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone Build, API Tests, Radar Tests, Docker Build & Compose Stack E2E)
+- Integrated into main: commit via no-ff merge.

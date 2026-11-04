@@ -40,12 +40,22 @@
 
 ## Blockers and Proposed Decisions
 
+- **2026-11-04T19:36:00Z — task-alert-compose-e2e CI verification & integration (RESOLVED)**:
+  - Worker commit `fe530e4` (removing `profiles: [e2e]`) combined with `6d80232` (URL separation) was pushed to origin.
+  - Remote GitHub Actions CI run `41897970581` passed 100% across all 6 test suites (Web Drop-Zone, Rust Core, Multimodal, API, Radar, and Docker Build & Compose Stack E2E with live webhook delivery verification).
+  - Branch merged into `main` via `git merge --no-ff`.
+  - Milestone 6 is 100% complete. Downstream task 23 (`task-claim-audit-labels`) is now unblocked and ready for worker claim.
+
 - **2026-11-04T19:18:00Z — task-alert-compose-e2e CI verification analysis**:
   - Worker branch `agent/task-alert-compose-e2e` (HEAD `e36f0a1`) was pushed to `origin` and triggered GitHub Actions CI run `41895009455`.
   - All unit suites passed (Multimodal, Rust Core, Radar, Web Build, API Tests).
   - The `Docker Build & Compose Stack E2E` job successfully built container images and launched the Compose stack, but failed in `test_radar_ingest_dispatches_signed_alert_to_compose_webhook` (`assert len(matching) == 1` evaluated `0 == 1`).
   - **Root Cause**: The test registered `WEBHOOK_URL` (`http://127.0.0.1:18081/events`) with `/api/v1/alerts`. Inside the API container, `127.0.0.1` refers to the container itself (connection refused), rather than the Compose service `http://webhook-listener:9000/events`.
   - **Fix Required**: In `tests/e2e/test_compose_stack.py`, separate the webhook registration URL (`http://webhook-listener:9000/events`, or `os.environ.get("XREACH_E2E_WEBHOOK_DISPATCH_URL", "http://webhook-listener:9000/events")`) from the query URL polled by host pytest (`http://127.0.0.1:18081/events`, or `os.environ.get("XREACH_E2E_WEBHOOK_QUERY_URL", f"http://127.0.0.1:{WEBHOOK_PORT}/events")`). Worker is instructed to apply this fix on `agent/task-alert-compose-e2e`.
+
+- **2026-11-04T19:30:58Z — task-alert-compose-e2e default listener change handed off**: commit `fe530e44ff7e15af9a5e4eefc16238b263e2e765` removes the `e2e` profile from `webhook-listener`, so it starts by default. `docker compose config -q` passes. Operator will publish and verify the branch in CI.
+
+- **2026-11-04T19:23:18Z — task-alert-compose-e2e network fix committed**: `6d80232ad2108195f1067b7952c25f7485de32f0` separates the API's internal service URL from the host-published query URL as requested by CI analysis. Syntax and diff checks passed. E2E acceptance still needs a CI rerun. The previous orchestrator state/ledger session discrepancy remains unresolved.
 
 - **2026-11-03T18:45:00Z — Milestone 5 Orchestrator & State Reconciled (RESOLVED)**:
   1. `scripts/orchestrator` has been updated to dynamically resolve and invoke the built binary at `../multi-agent-orchestrator/bin/orchestrator`, eliminating external machine path dependencies.
