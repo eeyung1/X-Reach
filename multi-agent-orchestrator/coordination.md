@@ -37,10 +37,17 @@
   3. **Task Decomposition**: 4 tasks planned (Task 19: Alert Dispatcher Engine, Task 20: API Alert Endpoints, Task 21: Web Alert Settings UI, Task 22: Compose E2E Integration). Task 19 is open and ready for worker claim.
 - **2026-11-04**: Integrated Task 23 (`task-claim-audit-labels`) into `main` following 100% pass on GitHub Actions CI run 41914347221. All model score percentile uncertainty labels, DKW empirical confidence bands, and Local Topic Codes verified. Task 24 (`task-data-contract-schemas`) unblocked and marked Unclaimed (Ready).
 - **2026-11-04**: Decoupled Task 25 (`task-archive-ingest-engine`) from Task 24. Task 24 file scope is strictly bounded to `services/api/` (Pydantic contract schemas). Task 25 file scope is strictly bounded to `services/radar/` (archive parser & baseline distributions). Since the scopes are completely disjoint, both tasks are unblocked and running in parallel. Worker `Codex-20261104-task24-20261104-62aecb92` claimed Task 24; Task 25 is marked Unclaimed (Ready) for immediate concurrent claim.
+- **2026-11-04**: Integrated Task 24 (`task-data-contract-schemas`) into `main` following 100% pass on GitHub Actions CI run 41919884728. Versioned telemetry contract schemas (Pydantic v2) verified across all 43 API tests. Reconciled coordination state discrepancy (Codex session marked COMPLETE). Task 25 (`task-archive-ingest-engine`) actively executing under worker GPT56Sol.
 
 
 
 ## Blockers and Proposed Decisions
+
+- **2026-11-04T21:54:00Z — task-data-contract-schemas CI verification & integration (RESOLVED)**:
+  - Worker commit `f915a7d` was pushed to `origin/agent/task-data-contract-schemas`.
+  - Remote GitHub Actions CI run `41919884728` passed 100% across all 6 test suites (Web Drop-Zone, Rust Core, Multimodal, API, Radar, and Docker Build & Compose Stack E2E).
+  - Branch merged into `main` via `git merge --no-ff`.
+  - Worktree cleaned, branch deleted, session marked COMPLETE in state.json.
 
 - **2026-11-04T21:19:00Z — task-claim-audit-labels CI verification & integration (RESOLVED)**:
   - Worker commit `c317fb9` was pushed to `origin/agent/task-claim-audit-labels`.
@@ -64,6 +71,8 @@
 - **2026-11-04T19:30:58Z — task-alert-compose-e2e default listener change handed off**: commit `fe530e44ff7e15af9a5e4eefc16238b263e2e765` removes the `e2e` profile from `webhook-listener`, so it starts by default. `docker compose config -q` passes. Operator will publish and verify the branch in CI.
 
 - **2026-11-04T19:23:18Z — task-alert-compose-e2e network fix committed**: `6d80232ad2108195f1067b7952c25f7485de32f0` separates the API's internal service URL from the host-published query URL as requested by CI analysis. Syntax and diff checks passed. E2E acceptance still needs a CI rerun. The previous orchestrator state/ledger session discrepancy remains unresolved.
+
+- **2026-11-04T21:48:01Z — task-data-contract-schemas handed off**: Worker committed `f915a7d1151a04668f36bdb846623639a69a6a04` on `agent/task-data-contract-schemas`; orchestrator completion ran the full API suite in Python 3.11 (43 passed) and released the claim. Task 24 is Done-waiting for CI/integration. Structured `state.json` has no claim, but still reports the completed session ACTIVE; reconcile this known legacy ledger/state projection discrepancy during integration.
 
 - **2026-11-03T18:45:00Z — Milestone 5 Orchestrator & State Reconciled (RESOLVED)**:
   1. `scripts/orchestrator` has been updated to dynamically resolve and invoke the built binary at `../multi-agent-orchestrator/bin/orchestrator`, eliminating external machine path dependencies.
