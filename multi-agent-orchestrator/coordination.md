@@ -36,6 +36,7 @@
   2. **Milestone 6 Objectives**: Build an automated alert pipeline that detects newly scouted high-velocity viral root posts (<15m age, >600 views/min) matching author SimClusters or Semantic IDs, and immediately dispatches alerts to external channels (Discord, Slack, Generic Webhook) with HMAC signing and retry logic.
   3. **Task Decomposition**: 4 tasks planned (Task 19: Alert Dispatcher Engine, Task 20: API Alert Endpoints, Task 21: Web Alert Settings UI, Task 22: Compose E2E Integration). Task 19 is open and ready for worker claim.
 - **2026-11-04**: Integrated Task 23 (`task-claim-audit-labels`) into `main` following 100% pass on GitHub Actions CI run 41914347221. All model score percentile uncertainty labels, DKW empirical confidence bands, and Local Topic Codes verified. Task 24 (`task-data-contract-schemas`) unblocked and marked Unclaimed (Ready).
+- **2026-11-04**: Decoupled Task 25 (`task-archive-ingest-engine`) from Task 24. Task 24 file scope is strictly bounded to `services/api/` (Pydantic contract schemas). Task 25 file scope is strictly bounded to `services/radar/` (archive parser & baseline distributions). Since the scopes are completely disjoint, both tasks are unblocked and running in parallel. Worker `Codex-20261104-task24-20261104-62aecb92` claimed Task 24; Task 25 is marked Unclaimed (Ready) for immediate concurrent claim.
 
 
 
