@@ -75,7 +75,6 @@ services:
 
   webhook-listener:
     image: python:3.11-alpine
-    profiles: [e2e]
     command: [python, /app/webhook_listener.py]
     ports:
       - 127.0.0.1:${XREACH_E2E_WEBHOOK_PORT:-18081}:9000
