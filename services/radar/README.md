@@ -8,7 +8,9 @@ The radar service has two deliberately separate responsibilities:
    bodies and ranks fresh root posts by observed impressions per minute.
 3. `SimClusterScout` aligns an extracted six-level Semantic ID with active
    SimCluster prefixes and returns only matching high-velocity root posts.
-4. `RadarDaemon` replays offline HAR/GraphQL/REA CDP evidence or repeatedly runs
+4. `ArchiveIngestor` parses first-party X `tweets.js` or CSV exports into
+   observed impression records, content-format summaries, and an author baseline.
+5. `RadarDaemon` replays offline HAR/GraphQL/REA CDP evidence or repeatedly runs
    a live REA browser scenario and publishes changed seeds to the API SSE broker.
 
 `inspect-web-page` does not retain response values by default. Seed scouting
@@ -31,6 +33,10 @@ python -m xreach_radar scout capture.json \
 python -m xreach_radar scout capture.json \
   --semantic-id 12,44,91,8,203,17 \
   --simcluster-catalog active-simclusters.json --min-prefix-levels 2
+
+# Build a first-party historical baseline without an X API credential.
+python -m xreach_radar ingest-archive /path/to/archive/data/tweets.js
+python -m xreach_radar ingest-archive /path/to/tweet-analytics.csv
 
 # One-shot offline replay into a locally running API.
 python -m xreach_radar daemon --capture session.har.json \
@@ -55,6 +61,21 @@ Daemon defaults can be supplied with `XREACH_RADAR_CAPTURE_FILE`,
 response bodies; passive `inspect-web-page` shapes alone cannot establish tweet
 values. SIGTERM/SIGINT stop the polling loop cleanly. Capture files are bounded
 to 25 MB and only replayed again after their size or modification time changes.
+
+## First-party archive ingestion
+
+`ArchiveIngestor` accepts the JavaScript assignment wrapper used by official X
+`data/tweets.js` files and header-based CSV exports. A directory input resolves
+`data/tweets.js`, `tweets.js`, or a single CSV automatically. Inputs are bounded
+to 100 MB and one million records. Posts without both an identifier and an
+observed impression/view count are reported as skipped; unknown impressions are
+never inferred. Duplicate tweet IDs are counted once.
+
+The report contains each usable post, a breakdown for text, image, video, GIF,
+link, poll, mixed, or other formats, and an author baseline. Baseline `mu` and
+`sigma` are the population mean and standard deviation of natural-log observed
+impressions using a documented floor of one for zero-impression posts. This is
+a descriptive first-party baseline, not a forecast or a platform-wide sample.
 
 ## Alert rules and webhooks
 

@@ -13,6 +13,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
+from .archive_ingest import ingest_archive
 from .cdp_client import ReaClient, ReaCommandError
 from .daemon import daemon_from_environment, run_daemon
 from .seed_scout import ScoutConfig, SeedScout
@@ -29,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
     inspect.add_argument("--observation-ms", type=int, default=1_000)
     inspect.add_argument("--allowed-origin", action="append", default=[])
     inspect.add_argument("--rea-command", default="rea")
+
+    archive = subcommands.add_parser(
+        "ingest-archive",
+        help="summarize observed impressions from an X tweets.js or CSV export",
+    )
+    archive.add_argument("archive", type=Path)
 
     scout = subcommands.add_parser("scout", help="rank roots in a saved capture")
     scout.add_argument("capture", type=Path)
@@ -76,6 +83,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 allowed_origins=arguments.allowed_origin,
             )
             _print_json(result)
+            return 0
+
+        if arguments.command == "ingest-archive":
+            _print_json(asdict(ingest_archive(arguments.archive)))
             return 0
 
         if arguments.command == "daemon":
