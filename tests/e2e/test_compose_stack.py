@@ -20,8 +20,11 @@ ALERT_ADMIN_TOKEN = os.environ.get(
     "XREACH_ALERT_ADMIN_TOKEN", "local-alert-admin-token"
 )
 WEBHOOK_PORT = os.environ.get("XREACH_E2E_WEBHOOK_PORT", "18081")
-WEBHOOK_URL = os.environ.get(
-    "XREACH_E2E_WEBHOOK_URL", f"http://127.0.0.1:{WEBHOOK_PORT}/events"
+WEBHOOK_DISPATCH_URL = os.environ.get(
+    "XREACH_E2E_WEBHOOK_DISPATCH_URL", "http://webhook-listener:9000/events"
+)
+WEBHOOK_QUERY_URL = os.environ.get(
+    "XREACH_E2E_WEBHOOK_QUERY_URL", f"http://127.0.0.1:{WEBHOOK_PORT}/events"
 )
 WEBHOOK_SECRET = "compose-e2e-secret"
 
@@ -116,7 +119,7 @@ def test_radar_ingest_dispatches_signed_alert_to_compose_webhook() -> None:
             "webhooks": [
                 {
                     "webhook_id": "compose-e2e-listener",
-                    "url": WEBHOOK_URL,
+                    "url": WEBHOOK_DISPATCH_URL,
                     "secret": WEBHOOK_SECRET,
                     "format": "generic",
                 }
@@ -147,7 +150,7 @@ def test_radar_ingest_dispatches_signed_alert_to_compose_webhook() -> None:
     deadline = time.monotonic() + 20
     deliveries: list[dict[str, object]] = []
     while time.monotonic() < deadline:
-        request = Request(WEBHOOK_URL)
+        request = Request(WEBHOOK_QUERY_URL)
         try:
             with urlopen(request, timeout=3) as response:
                 deliveries = json.loads(response.read())
