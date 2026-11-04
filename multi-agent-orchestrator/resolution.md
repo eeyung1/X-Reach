@@ -486,3 +486,15 @@ Append-only completed-work evidence.
 - GitHub Actions CI Run: 41718481931
 - CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone Build, API Tests, Radar Tests, Docker Build & Compose Stack E2E)
 - Integrated into main: commit via no-ff merge.
+
+## task-alert-compose-e2e — codex-task22-20261104-eeyung-1
+- Session: Codex-20261104-task22-20261104-e84973ab
+- State: BLOCKED (implementation committed; live Compose acceptance remains unverified)
+- Branch/worktree: agent/task-alert-compose-e2e at .agent-worktrees/task-alert-compose-e2e
+- Commit: e36f0a1 — test: verify alert delivery through compose stack
+- Files: docker-compose.yml; scripts/e2e.sh; tests/e2e/test_compose_stack.py; tests/e2e/webhook_listener.py.
+- Implementation: added an E2E-only webhook receiver profile; configured the API alert admin token in Compose; added a test that configures a matching alert, ingests a radar seed, verifies webhook delivery and validates the HMAC signature.
+- Validation passed: `docker compose config -q`; `python3 -m py_compile tests/e2e/test_compose_stack.py tests/e2e/webhook_listener.py`; `sh -n scripts/e2e.sh`; `git diff --check`.
+- Acceptance gate: `COMPOSE_PROJECT_NAME=xreach-task22 XREACH_HTTP_PORT=18082 XREACH_E2E_WEBHOOK_PORT=18083 scripts/e2e.sh -v` was stopped after the API image dependency install spent over 35 minutes downloading the 539 MB PyTorch wheel without completing the build. The isolated Compose project had no containers when inspected. `pytest` was unavailable in the system Python; it was installed in `/tmp/xreach-task22-venv` but the E2E suite was not run.
+- Next action: rerun `scripts/e2e.sh -v` with pytest available and Docker image dependencies cached; resolve any runtime failures before treating task 22 as complete. Planner/integrator owns publication and integration. Coordination caveat: the Markdown session is BLOCKED and the claim ledger is empty, but structured `state.json` still reports this session ACTIVE after release; orchestrator status inspection also refuses the current ledger/state combination.
+- Recorded UTC: 2026-11-04T19:08:34Z
