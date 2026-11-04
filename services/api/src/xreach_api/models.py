@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Literal
 from urllib.parse import urlsplit
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 
 class Predictions(BaseModel):
@@ -250,3 +260,132 @@ class AlertTestRequest(BaseModel):
 
     rule_id: str = Field(min_length=1, max_length=80)
     seed: dict[str, Any]
+
+
+TelemetryHorizon = Literal["5m", "30m", "2h", "24h", "7d"]
+DraftMediaType = Literal["image", "video"]
+PublicationSurface = Literal["PROFILE_POST", "DIRECT_ROOT_REPLY"]
+OutcomeSource = Literal["platform_api", "archive", "manual"]
+
+
+class VersionedTelemetryRecord(BaseModel):
+    """Common envelope for versioned, validated telemetry records."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    schema_version: Literal["v1"] = "v1"
+    recorded_at: AwareDatetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+
+class DraftInputRecord(VersionedTelemetryRecord):
+    """Draft content and model outputs captured before publication."""
+
+    draft_id: UUID
+    text: str = Field(default="", max_length=280)
+    media_types: list[DraftMediaType] = Field(default_factory=list, max_length=4)
+    content_hash_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-fA-F]{64}$"
+    )
+    model_score: float | None = Field(default=None, allow_inf_nan=False)
+    model_score_percentile: float | None = Field(
+        default=None, ge=0, le=100, allow_inf_nan=False
+    )
+    local_topic_codes: list[StrictInt] | None = None
+
+    @field_validator("local_topic_codes", mode="before")
+    @classmethod
+    def validate_local_topic_codes(cls, value: object) -> object:
+        if value is None:
+            return value
+        if isinstance(value, list) and any(isinstance(code, bool) for code in value):
+            raise ValueError(
+                "local_topic_codes must contain integer codes, not booleans"
+            )
+        if isinstance(value, list) and len(value) != 6:
+            raise ValueError("local_topic_codes must contain six codes from 0 to 255")
+        if isinstance(value, list) and any(
+            isinstance(code, int) and not 0 <= code < 256 for code in value
+        ):
+            raise ValueError("local_topic_codes must contain six codes from 0 to 255")
+        return value
+
+    @model_validator(mode="after")
+    def require_content(self) -> DraftInputRecord:
+        if not self.text.strip() and not self.media_types:
+            raise ValueError("text or at least one media type is required")
+        return self
+
+
+class AccountContextRecord(VersionedTelemetryRecord):
+    """Account attributes observed when a draft is analyzed or published."""
+
+    account_id: str = Field(min_length=1, max_length=64)
+    follower_count: StrictInt | None = Field(default=None, ge=0)
+    following_count: StrictInt | None = Field(default=None, ge=0)
+    post_count: StrictInt | None = Field(default=None, ge=0)
+    account_age_days: StrictInt | None = Field(default=None, ge=0)
+    verified: bool | None = None
+
+
+class PublicationContextRecord(VersionedTelemetryRecord):
+    """Link a draft to its published post and publication surface."""
+
+    draft_id: UUID
+    published_tweet_id: str = Field(min_length=1, max_length=64)
+    surface: PublicationSurface
+    published_at: AwareDatetime
+    conversation_id: str | None = Field(default=None, min_length=1, max_length=64)
+    in_reply_to_tweet_id: str | None = Field(
+        default=None, min_length=1, max_length=64
+    )
+
+    @model_validator(mode="after")
+    def require_reply_target(self) -> PublicationContextRecord:
+        if self.surface == "DIRECT_ROOT_REPLY" and not self.in_reply_to_tweet_id:
+            raise ValueError("direct root replies require in_reply_to_tweet_id")
+        if self.surface == "DIRECT_ROOT_REPLY" and not self.conversation_id:
+            raise ValueError("direct root replies require conversation_id")
+        if (
+            self.surface == "DIRECT_ROOT_REPLY"
+            and self.in_reply_to_tweet_id != self.conversation_id
+        ):
+            raise ValueError("direct root replies must target the conversation root")
+        return self
+
+
+class OutcomeSnapshotRecord(VersionedTelemetryRecord):
+    """Observed cumulative engagement metrics at one supported horizon."""
+
+    draft_id: UUID
+    published_tweet_id: str = Field(min_length=1, max_length=64)
+    horizon: TelemetryHorizon
+    observed_at: AwareDatetime
+    source: OutcomeSource = "manual"
+    impressions: StrictInt | None = Field(default=None, ge=0)
+    likes: StrictInt | None = Field(default=None, ge=0)
+    replies: StrictInt | None = Field(default=None, ge=0)
+    reposts: StrictInt | None = Field(default=None, ge=0)
+    quotes: StrictInt | None = Field(default=None, ge=0)
+    bookmarks: StrictInt | None = Field(default=None, ge=0)
+    profile_visits: StrictInt | None = Field(default=None, ge=0)
+    follows: StrictInt | None = Field(default=None, ge=0)
+    video_views: StrictInt | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def require_observed_metric(self) -> OutcomeSnapshotRecord:
+        metric_names = (
+            "impressions",
+            "likes",
+            "replies",
+            "reposts",
+            "quotes",
+            "bookmarks",
+            "profile_visits",
+            "follows",
+            "video_views",
+        )
+        if all(getattr(self, name) is None for name in metric_names):
+            raise ValueError("at least one outcome metric must be observed")
+        return self
