@@ -104,6 +104,30 @@ Alert settings are held in process memory and must be configured again after a
 restart. Keep one API worker while relying on radar ingestion and alert delivery,
 as each process has its own settings and event buffer.
 
+## Versioned telemetry contracts
+
+`xreach_api.models` defines strict Pydantic v2 records for draft inputs,
+account context, publication context, and observed outcomes. Each record uses
+`schema_version: "v1"`, timezone-aware timestamps, and rejects unknown fields.
+Draft records require text or media metadata. Publication records link a draft
+to a published post and validate that direct root replies target their
+conversation root. Outcome records represent one observation horizon per
+record; supported horizons are `5m`, `30m`, `2h`, `24h`, and `7d`.
+
+```json
+{
+  "schema_version": "v1",
+  "draft_id": "97bb1fd8-3e1d-4d46-9c06-812f57f231d5",
+  "published_tweet_id": "1234567890",
+  "horizon": "24h",
+  "observed_at": "2026-11-04T12:00:00Z",
+  "source": "platform_api",
+  "impressions": 12000,
+  "likes": 240,
+  "replies": 35
+}
+```
+
 ## Model score calibration and uncertainty
 
 Set `XREACH_SCORE_CALIBRATION_FILE` to a JSON calibration file to enable model
