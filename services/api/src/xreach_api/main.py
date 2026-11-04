@@ -20,17 +20,18 @@ from pydantic import BaseModel, ValidationError
 from starlette.datastructures import UploadFile
 from starlette.responses import StreamingResponse
 
-from .calibration import ReachCalibrationConfig
+from .calibration import ScoreCalibrationConfig
 from .models import (
-    AnalyzeRequest,
-    AnalyzeResponse,
     AlertConfigurationRequest,
     AlertConfigurationResponse,
     AlertRuleConfig,
     AlertTestRequest,
+    AnalyzeRequest,
+    AnalyzeResponse,
     AutomaticAnalyzeRequest,
     CandidateInput,
     MultimodalOutput,
+    PercentileBounds,
     PlacementRequest,
     RadarIngestRequest,
     ScoreOutput,
@@ -52,24 +53,35 @@ from .rust_scorer import RustScorer, ScorerUnavailable
 MAX_MEDIA_BYTES = 50 * 1024 * 1024
 ModelT = TypeVar("ModelT", bound=BaseModel)
 logger = logging.getLogger(__name__)
+MODEL_LIMITATIONS = (
+    "Model scores compare weighted action propensities; they do not predict impressions, virality, or distribution.",
+    "Model score percentiles describe rank within the configured score reference distribution, not reach probability.",
+    "Local Topic Codes come from this installation's local quantizer and are not official X Phoenix Semantic IDs.",
+    "Uncertainty bounds are available only for empirical calibrations with a known reference sample size.",
+    "Live ranking parameters, account state, audience response, and platform changes are outside this model.",
+)
 
 
 def create_app(
     scorer: RustScorer | None = None,
     multimodal: MultimodalBackend | None = None,
-    reach_calibration: ReachCalibrationConfig | None = None,
+    score_calibration: ScoreCalibrationConfig | None = None,
     radar_events: RadarEventBuffer | None = None,
     radar_producer: RadarSeedProducer | None = None,
     radar_heartbeat_seconds: float = 15.0,
     radar_ingest_token: str | None = None,
     alert_admin_token: str | None = None,
+    *,
+    reach_calibration: ScoreCalibrationConfig | None = None,
 ) -> FastAPI:
     if not 0.1 <= radar_heartbeat_seconds <= 300:
         raise ValueError("radar heartbeat interval must be between 0.1 and 300 seconds")
+    if score_calibration is not None and reach_calibration is not None:
+        raise ValueError("configure score_calibration only once")
     calibration = (
-        reach_calibration
-        if reach_calibration is not None
-        else ReachCalibrationConfig.from_environment()
+        score_calibration
+        or reach_calibration
+        or ScoreCalibrationConfig.from_environment()
     )
     event_buffer = radar_events or RadarEventBuffer()
     producer = radar_producer or default_radar_producer(event_buffer)
@@ -90,14 +102,15 @@ def create_app(
         version="0.1.0",
         description=(
             "Extracts local multimodal draft signals and scores their Phoenix "
-            "prediction heads with the Rust core. Reach percentiles are available "
-            "when a historical score calibration is configured."
+            "prediction heads with the Rust core. Model score percentiles are "
+            "available when a historical score calibration is configured; they "
+            "are comparative score ranks, not forecasts of reach."
         ),
         lifespan=lifespan,
     )
     app.state.scorer = scorer or RustScorer()
     app.state.multimodal = multimodal or MultimodalService()
-    app.state.reach_calibration = calibration
+    app.state.score_calibration = calibration
     app.state.radar_events = event_buffer
     app.state.radar_producer = producer
     app.state.radar_heartbeat_seconds = radar_heartbeat_seconds
@@ -317,13 +330,16 @@ def create_app(
             )
 
         rust_result = await run_in_threadpool(
-            _score, app.state.scorer, data, app.state.reach_calibration
+            _score, app.state.scorer, data, app.state.score_calibration
         )
-        reach_percentile, reach_status = _reach_output(rust_result)
+        score_percentile, calibration_status, percentile_bounds = (
+            _score_percentile_output(rust_result)
+        )
         return AnalyzeResponse(
             algorithmic_viability_score=rust_result["final_score"],
-            reach_potential_percentile=reach_percentile,
-            reach_calibration_status=reach_status,
+            model_score_percentile=score_percentile,
+            model_score_percentile_bounds=percentile_bounds,
+            score_calibration_status=calibration_status,
             score=_score_output(rust_result),
             placement_recommendation={
                 "surface": "UNDETERMINED",
@@ -335,9 +351,9 @@ def create_app(
             suggested_tweaks=[
                 *(
                     [
-                        "Reach percentile is unavailable until a calibration model is configured."
+                        "Model score percentile is unavailable until a score calibration is configured."
                     ]
-                    if reach_status == "unavailable"
+                    if calibration_status == "unavailable"
                     else []
                 ),
                 *(
@@ -353,7 +369,7 @@ def create_app(
                 ),
             ],
             model_name=extracted.model_name if extracted else None,
-            semantic_id=extracted.semantic_id if extracted else None,
+            local_topic_codes=extracted.semantic_id if extracted else None,
             predicted_probabilities=extracted.predictions if extracted else None,
             modalities=extracted.modalities if extracted else [],
             keyframes=extracted.keyframes if extracted else [],
@@ -362,6 +378,7 @@ def create_app(
             ),
             quantizer_status=extracted.quantizer_status if extracted else None,
             propensity_status=extracted.propensity_status if extracted else None,
+            model_limitations=list(MODEL_LIMITATIONS),
         )
 
     @app.post("/api/v1/placement")
@@ -387,8 +404,8 @@ def create_app(
             has_untrusted_external_url=data.direct_root_reply_has_untrusted_external_url,
             **common,
         )
-        profile_result = _score(app.state.scorer, profile, app.state.reach_calibration)
-        reply_result = _score(app.state.scorer, root_reply, app.state.reach_calibration)
+        profile_result = _score(app.state.scorer, profile, app.state.score_calibration)
+        reply_result = _score(app.state.scorer, root_reply, app.state.score_calibration)
         if profile_result["dropped_by"] and reply_result["dropped_by"]:
             surface = "NO_SAFE_SURFACE"
             reasoning = "Both placement candidates trigger visibility drops; revise the draft before posting."
@@ -411,28 +428,44 @@ def create_app(
             if surface == "PROFILE_POST"
             else None
         )
-        reach_percentile, reach_status = (
-            _reach_output(recommended_result)
+        score_percentile, calibration_status, percentile_bounds = (
+            _score_percentile_output(recommended_result)
             if recommended_result is not None
-            else (None, "unavailable")
+            else (None, "unavailable", None)
+        )
+        profile_percentile, profile_status, profile_bounds = _score_percentile_output(
+            profile_result
+        )
+        reply_percentile, reply_status, reply_bounds = _score_percentile_output(
+            reply_result
         )
         return {
             "recommended_surface": surface,
             "reasoning": reasoning,
-            "reach_potential_percentile": reach_percentile,
-            "reach_calibration_status": reach_status,
+            "model_score_percentile": score_percentile,
+            "model_score_percentile_bounds": (
+                percentile_bounds.model_dump() if percentile_bounds else None
+            ),
+            "score_calibration_status": calibration_status,
             "scores": {
                 "profile": {
                     **_score_output(profile_result).model_dump(),
-                    "reach_potential_percentile": _reach_output(profile_result)[0],
-                    "reach_calibration_status": _reach_output(profile_result)[1],
+                    "model_score_percentile": profile_percentile,
+                    "model_score_percentile_bounds": (
+                        profile_bounds.model_dump() if profile_bounds else None
+                    ),
+                    "score_calibration_status": profile_status,
                 },
                 "direct_root_reply": {
                     **_score_output(reply_result).model_dump(),
-                    "reach_potential_percentile": _reach_output(reply_result)[0],
-                    "reach_calibration_status": _reach_output(reply_result)[1],
+                    "model_score_percentile": reply_percentile,
+                    "model_score_percentile_bounds": (
+                        reply_bounds.model_dump() if reply_bounds else None
+                    ),
+                    "score_calibration_status": reply_status,
                 },
             },
+            "model_limitations": list(MODEL_LIMITATIONS),
         }
 
     return app
@@ -523,27 +556,35 @@ def _extract(
 def _score(
     scorer: RustScorer,
     candidate: CandidateInput,
-    reach_calibration: ReachCalibrationConfig | None = None,
+    score_calibration: ScoreCalibrationConfig | None = None,
 ) -> dict[str, Any]:
     payload = candidate.model_dump(
         mode="json", exclude_none=True, exclude={"text", "media_attached"}
     )
     try:
-        config = reach_calibration.to_payload() if reach_calibration else None
-        return scorer.score(payload, reach_calibration=config)
+        config = score_calibration.to_payload() if score_calibration else None
+        return scorer.score(payload, score_calibration=config)
     except ScorerUnavailable as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
 
-def _reach_output(result: dict[str, Any]) -> tuple[float | None, str]:
-    status = result.get("reach_calibration_status", "unavailable")
-    percentile = result.get("reach_potential_percentile")
+def _score_percentile_output(
+    result: dict[str, Any],
+) -> tuple[float | None, str, PercentileBounds | None]:
+    status = result.get("score_calibration_status", "unavailable")
+    percentile = result.get("model_score_percentile")
+    raw_bounds = result.get("model_score_percentile_bounds")
     if status == "unavailable":
-        return None, "unavailable"
+        if percentile is not None or raw_bounds is not None:
+            raise HTTPException(
+                status_code=503,
+                detail="Rust scorer returned percentile data without score calibration",
+            )
+        return None, "unavailable", None
     if status not in {"empirical", "log_normal"}:
         raise HTTPException(
             status_code=503,
-            detail="Rust scorer returned an unknown reach calibration status",
+            detail="Rust scorer returned an unknown score calibration status",
         )
     if (
         not isinstance(percentile, (float, int))
@@ -551,9 +592,24 @@ def _reach_output(result: dict[str, Any]) -> tuple[float | None, str]:
         or not 0 <= percentile <= 100
     ):
         raise HTTPException(
-            status_code=503, detail="Rust scorer returned an invalid reach percentile"
+            status_code=503,
+            detail="Rust scorer returned an invalid model score percentile",
         )
-    return float(percentile), status
+    bounds = None
+    if raw_bounds is not None:
+        try:
+            bounds = PercentileBounds.model_validate(raw_bounds)
+        except ValidationError as error:
+            raise HTTPException(
+                status_code=503,
+                detail="Rust scorer returned invalid model score percentile bounds",
+            ) from error
+        if not bounds.lower <= float(percentile) <= bounds.upper:
+            raise HTTPException(
+                status_code=503,
+                detail="Rust scorer returned bounds that exclude the model score percentile",
+            )
+    return float(percentile), status, bounds
 
 
 def _score_output(result: dict[str, Any]) -> ScoreOutput:

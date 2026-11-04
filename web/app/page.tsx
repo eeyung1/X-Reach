@@ -28,19 +28,25 @@ type PlacementRecommendation = {
   reasoning: string;
 };
 
+type PercentileBounds = {
+  lower: number;
+  upper: number;
+  confidence_level: number;
+  method: string;
+};
+
 type Analysis = {
   algorithmic_viability_score: number;
-  reach_potential_percentile: number | string | null;
-  reach_calibration_status?: string;
+  model_score_percentile: number | string | null;
+  model_score_percentile_bounds?: PercentileBounds | null;
+  score_calibration_status?: string;
   predicted_probabilities?: Record<string, number | null> | null;
   placement_recommendation: PlacementRecommendation;
   suggested_tweaks?: string[];
-  semantic_ids?: unknown;
-  semantic_id?: unknown;
+  local_topic_codes?: unknown;
+  model_limitations?: string[];
   keyframes?: unknown;
   multimodal?: {
-    semantic_ids?: unknown;
-    semantic_id?: unknown;
     keyframes?: unknown;
   };
 };
@@ -64,8 +70,10 @@ type PlacementCandidateScore = {
 type PlacementEvaluation = {
   recommended_surface: string;
   reasoning: string;
-  reach_potential_percentile: number | null;
-  reach_calibration_status: string;
+  model_score_percentile: number | null;
+  model_score_percentile_bounds: PercentileBounds | null;
+  score_calibration_status: string;
+  model_limitations: string[];
   scores: {
     profile: PlacementCandidateScore;
     direct_root_reply: PlacementCandidateScore;
@@ -103,7 +111,13 @@ const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 const sample: Analysis = {
   algorithmic_viability_score: 8.4,
-  reach_potential_percentile: 82,
+  model_score_percentile: 82,
+  model_score_percentile_bounds: {
+    lower: 68,
+    upper: 94,
+    confidence_level: 0.95,
+    method: "dkw",
+  },
   placement_recommendation: {
     surface: "PROFILE POST",
     reasoning:
@@ -112,6 +126,11 @@ const sample: Analysis = {
   suggested_tweaks: [
     "Lead with the most useful detail.",
     "Keep external links in a follow-up when possible.",
+  ],
+  model_limitations: [
+    "Model scores compare weighted action propensities; they do not predict impressions, virality, or distribution.",
+    "Percentiles rank scores within a configured reference set; they are not reach probability.",
+    "Local Topic Codes are installation-specific and are not official X Phoenix Semantic IDs.",
   ],
 };
 
@@ -136,14 +155,9 @@ function numericCodes(value: unknown): number[] {
   return [];
 }
 
-function semanticIds(analysis: Analysis | null): number[] {
+function localTopicCodes(analysis: Analysis | null): number[] {
   if (!analysis) return [];
-  return numericCodes(
-    analysis.semantic_ids ??
-      analysis.semantic_id ??
-      analysis.multimodal?.semantic_ids ??
-      analysis.multimodal?.semantic_id,
-  );
+  return numericCodes(analysis.local_topic_codes);
 }
 
 function keyframeFromResponse(
@@ -546,9 +560,9 @@ export default function Home() {
       }
       setAnalysis(payload);
       setNotice(
-        semanticIds(payload).length === 6
+        localTopicCodes(payload).length === 6
           ? "Live multimodal analysis complete."
-          : "Scoring complete; Semantic IDs were not included in this API response.",
+          : "Scoring complete; Local Topic Codes were not included in this API response.",
       );
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The analysis request failed.");
@@ -558,17 +572,18 @@ export default function Home() {
   }
 
   const shown = analysis ?? sample;
-  const ids = semanticIds(analysis);
+  const topicCodes = localTopicCodes(analysis);
   const localKeyframe = media.find((item) => item.keyframe)?.keyframe ?? null;
   const keyframe = useMemo(
     () => keyframeFromResponse(analysis, localKeyframe) ?? localKeyframe,
     [analysis, localKeyframe],
   );
-  const reachValue = shown.reach_potential_percentile;
-  const hasCalibratedReach = reachValue !== null && reachValue !== undefined;
-  const reachPercent = hasCalibratedReach
-    ? Math.min(100, Math.max(0, Number.parseFloat(String(reachValue)) || 0))
+  const scorePercentile = shown.model_score_percentile;
+  const hasScorePercentile = scorePercentile !== null && scorePercentile !== undefined;
+  const scorePercent = hasScorePercentile
+    ? Math.min(100, Math.max(0, Number.parseFloat(String(scorePercentile)) || 0))
     : 0;
+  const percentileBounds = shown.model_score_percentile_bounds;
   const peakVelocity = Math.max(
     1,
     ...radarEntries.map((entry) => entry.seed.views_per_minute),
@@ -712,7 +727,7 @@ export default function Home() {
           <div className="panel-heading">
             <div>
               <span className="step">02 / READOUT</span>
-              <h2>Reach outlook</h2>
+              <h2>Model score readout</h2>
             </div>
             <span className="sparkle" aria-hidden="true">
               ✳
@@ -726,7 +741,7 @@ export default function Home() {
             <div
               className="score-ring"
               style={{
-                background: `radial-gradient(closest-side, #111916 84%, transparent 86% 99%), conic-gradient(var(--green) 0 ${reachPercent}%, #334137 ${reachPercent}% 100%)`,
+                background: `radial-gradient(closest-side, #111916 84%, transparent 86% 99%), conic-gradient(var(--green) 0 ${scorePercent}%, #334137 ${scorePercent}% 100%)`,
               }}
             >
               <div>
@@ -735,29 +750,36 @@ export default function Home() {
               </div>
             </div>
             <div className="reach-stat">
-              <span>REACH POTENTIAL</span>
+              <span>MODEL SCORE PERCENTILE</span>
               <strong>
-                {hasCalibratedReach ? String(reachValue).replace(/%$/, "") : "—"}
-                {hasCalibratedReach && <small>%</small>}
+                {hasScorePercentile ? String(scorePercentile).replace(/%$/, "") : "—"}
+                {hasScorePercentile && <small>%</small>}
               </strong>
               <span className="reach-caption">
-                {hasCalibratedReach
+                {hasScorePercentile
                   ? analysis
-                    ? "model percentile"
-                    : "sample percentile"
+                    ? analysis.score_calibration_status === "log_normal"
+                      ? "parametric score rank · bounds unavailable"
+                      : "rank in configured score reference"
+                    : "illustrative score rank"
                   : "calibration pending"}
               </span>
+              {percentileBounds && (
+                <span className="reach-bounds">
+                  {Math.round(percentileBounds.confidence_level * 100)}% band · {percentileBounds.lower.toFixed(1)}–{percentileBounds.upper.toFixed(1)}
+                </span>
+              )}
             </div>
           </div>
 
-          <section className="semantic-section" aria-label="Semantic IDs">
+          <section className="semantic-section" aria-label="Local Topic Codes">
             <div className="semantic-title">
-              <span>SEMANTIC ID · 6 LEVEL RVQ</span>
-              <span>{ids.length === 6 ? "ALIGNED" : "PENDING"}</span>
+              <span>LOCAL TOPIC CODES · 6 LEVEL RVQ</span>
+              <span>{topicCodes.length === 6 ? "AVAILABLE" : "PENDING"}</span>
             </div>
-            {ids.length === 6 ? (
+            {topicCodes.length === 6 ? (
               <div className="sid-list">
-                {ids.map((code, index) => (
+                {topicCodes.map((code, index) => (
                   <span className="sid-badge" key={`${index}-${code}`}>
                     <small>L{index + 1}</small>
                     {code.toString().padStart(3, "0")}
@@ -765,7 +787,7 @@ export default function Home() {
                 ))}
               </div>
             ) : (
-              <p>Semantic IDs appear here when the multimodal API returns all six quantizer levels.</p>
+              <p>Local Topic Codes appear here when the local quantizer returns all six levels.</p>
             )}
           </section>
 
@@ -792,11 +814,22 @@ export default function Home() {
               ))}
             </ul>
           </div>
+          <section className="limitation-section" aria-labelledby="model-limitations-title">
+            <div className="tweak-title" id="model-limitations-title">
+              <span>MODEL LIMITATIONS</span>
+              <span>READ BEFORE USE</span>
+            </div>
+            <ul>
+              {(shown.model_limitations ?? sample.model_limitations ?? []).map((limitation) => (
+                <li key={limitation}>{limitation}</li>
+              ))}
+            </ul>
+          </section>
           <p className="notice" role="status">
             {notice}
           </p>
           <div className="report-foot">
-            <span>MODEL OUTPUTS ARE ESTIMATES</span>
+            <span>MODEL OUTPUTS ARE ESTIMATES · NOT A REACH FORECAST</span>
             <span>↗</span>
           </div>
         </aside>

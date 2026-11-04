@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
-from xreach_api.calibration import ReachCalibrationConfig
+from xreach_api.calibration import ScoreCalibrationConfig
 from xreach_api.main import create_app
 from xreach_api.multimodal import MediaUpload, MultimodalService
 from xreach_api.radar_stream import RadarEventBuffer, RadarSeedProducer
@@ -18,21 +18,32 @@ class FakeRustScorer:
         self.candidates = []
         self.calibrations = []
 
-    def score(self, candidate, reach_calibration=None):
+    def score(self, candidate, score_calibration=None):
         self.candidates.append(candidate)
-        self.calibrations.append(reach_calibration)
+        self.calibrations.append(score_calibration)
         predictions = candidate["predictions"]
         weighted = predictions.get("share_via_copy_link", 0.0) * 20
         dropped = candidate.get("visibility_labels", [])
+        bounds = (
+            {
+                "lower": 60.0,
+                "upper": 86.5,
+                "confidence_level": 0.95,
+                "method": "dkw",
+            }
+            if score_calibration and score_calibration["method"] == "empirical"
+            else None
+        )
         return {
             "weighted_score": weighted,
             "final_score": 0.0 if dropped else weighted + 0.001,
             "author_diversity_multiplier": 1.0,
             "out_of_network_multiplier": candidate.get("oon_multiplier", 1.0),
             "dropped_by": dropped,
-            "reach_potential_percentile": 73.25 if reach_calibration else None,
-            "reach_calibration_status": (
-                reach_calibration["method"] if reach_calibration else "unavailable"
+            "model_score_percentile": 73.25 if score_calibration else None,
+            "model_score_percentile_bounds": bounds,
+            "score_calibration_status": (
+                score_calibration["method"] if score_calibration else "unavailable"
             ),
         }
 
@@ -79,13 +90,13 @@ class FakeMultimodal:
 
 
 def client_with(
-    scorer, multimodal=None, reach_calibration=None, alert_admin_token=None
+    scorer, multimodal=None, score_calibration=None, alert_admin_token=None
 ):
     return TestClient(
         create_app(
             scorer,
             multimodal,
-            reach_calibration,
+            score_calibration,
             alert_admin_token=alert_admin_token,
         )
     )
@@ -151,8 +162,14 @@ def test_analyze_validates_prediction_heads_and_returns_uncalibrated_score():
     payload = response.json()
     assert payload["score"]["weighted_score"] == 4.0
     assert payload["algorithmic_viability_score"] == 4.001
-    assert payload["reach_potential_percentile"] is None
-    assert payload["reach_calibration_status"] == "unavailable"
+    assert payload["model_score_percentile"] is None
+    assert payload["model_score_percentile_bounds"] is None
+    assert payload["score_calibration_status"] == "unavailable"
+    assert "reach_potential_percentile" not in payload
+    assert "reach_calibration_status" not in payload
+    assert any(
+        "do not predict impressions" in item for item in payload["model_limitations"]
+    )
     assert payload["placement_recommendation"]["surface"] == "UNDETERMINED"
     assert scorer.candidates[0]["author_id"] == 42
     assert scorer.candidates[0]["in_network"] is False
@@ -160,17 +177,24 @@ def test_analyze_validates_prediction_heads_and_returns_uncalibrated_score():
 
 def test_analyze_returns_configured_historical_score_percentile():
     scorer = FakeRustScorer()
-    calibration = ReachCalibrationConfig(
+    calibration = ScoreCalibrationConfig(
         method="empirical", reference_scores=(0.1, 0.2, 0.3)
     )
-    response = client_with(scorer, reach_calibration=calibration).post(
+    response = client_with(scorer, score_calibration=calibration).post(
         "/api/v1/analyze",
         json={"text": "A test draft", "predictions": {"favorite": 0.2}},
     )
 
     assert response.status_code == 200
-    assert response.json()["reach_potential_percentile"] == 73.25
-    assert response.json()["reach_calibration_status"] == "empirical"
+    payload = response.json()
+    assert payload["model_score_percentile"] == 73.25
+    assert payload["model_score_percentile_bounds"] == {
+        "lower": 60.0,
+        "upper": 86.5,
+        "confidence_level": 0.95,
+        "method": "dkw",
+    }
+    assert payload["score_calibration_status"] == "empirical"
     assert scorer.calibrations == [
         {"method": "empirical", "reference_scores": [0.1, 0.2, 0.3]}
     ]
@@ -200,7 +224,8 @@ def test_analyze_extracts_predictions_and_semantic_metadata_from_multipart():
     assert response.status_code == 200
     payload = response.json()
     assert payload["algorithmic_viability_score"] == 5.001
-    assert payload["semantic_id"] == [12, 44, 91, 8, 203, 17]
+    assert payload["local_topic_codes"] == [12, 44, 91, 8, 203, 17]
+    assert "semantic_id" not in payload
     assert payload["model_name"] == "fake-clip"
     assert payload["modalities"] == ["text", "image"]
     assert payload["keyframes"] == [{"label": "opening", "timestamp_seconds": 1.2}]
@@ -320,10 +345,10 @@ def test_placement_compares_independently_scored_profile_and_root_reply():
 
 
 def test_placement_returns_calibrated_percentile_for_recommended_surface():
-    calibration = ReachCalibrationConfig(
+    calibration = ScoreCalibrationConfig(
         method="log_normal", log_mean=-2.0, log_std_dev=1.0
     )
-    response = client_with(FakeRustScorer(), reach_calibration=calibration).post(
+    response = client_with(FakeRustScorer(), score_calibration=calibration).post(
         "/api/v1/placement",
         json={
             "profile_predictions": {"share_via_copy_link": 0.1},
@@ -334,9 +359,11 @@ def test_placement_returns_calibrated_percentile_for_recommended_surface():
     assert response.status_code == 200
     payload = response.json()
     assert payload["recommended_surface"] == "DIRECT_ROOT_REPLY"
-    assert payload["reach_potential_percentile"] == 73.25
-    assert payload["reach_calibration_status"] == "log_normal"
-    assert payload["scores"]["profile"]["reach_calibration_status"] == "log_normal"
+    assert payload["model_score_percentile"] == 73.25
+    assert payload["model_score_percentile_bounds"] is None
+    assert payload["score_calibration_status"] == "log_normal"
+    assert payload["scores"]["profile"]["score_calibration_status"] == "log_normal"
+    assert any("not reach probability" in item for item in payload["model_limitations"])
 
 
 def test_placement_prefers_surviving_candidate_when_other_is_filtered():
@@ -377,14 +404,14 @@ def test_rust_scorer_sends_calibration_configuration(tmp_path: Path):
         "#!/usr/bin/env python3\n"
         "import json, sys\n"
         "request = json.load(sys.stdin)\n"
-        "print(json.dumps({'method': request['reach_calibration']['method']}))\n",
+        "print(json.dumps({'method': request['score_calibration']['method']}))\n",
         encoding="utf-8",
     )
     executable.chmod(0o755)
 
     result = RustScorer(binary=str(executable)).score(
         {"predictions": {"favorite": 0.25}},
-        reach_calibration={"method": "empirical", "reference_scores": [0.1, 0.2]},
+        score_calibration={"method": "empirical", "reference_scores": [0.1, 0.2]},
     )
 
     assert result == {"method": "empirical"}
@@ -398,7 +425,7 @@ def test_calibration_config_rejects_invalid_reference_data(tmp_path: Path):
     )
 
     try:
-        ReachCalibrationConfig.from_file(config_path)
+        ScoreCalibrationConfig.from_file(config_path)
     except ValueError as error:
         assert "2 to 1000000" in str(error)
     else:
@@ -574,7 +601,9 @@ def test_alert_configuration_rejects_duplicate_ids_and_unsafe_url():
     unsafe["webhooks"][0]["url"] = "file:///etc/passwd"
     headers = {"X-Alert-Admin-Token": "admin-secret"}
 
-    assert client.put("/api/v1/alerts", json=duplicate, headers=headers).status_code == 422
+    assert (
+        client.put("/api/v1/alerts", json=duplicate, headers=headers).status_code == 422
+    )
     assert client.put("/api/v1/alerts", json=unsafe, headers=headers).status_code == 422
 
 
@@ -590,7 +619,10 @@ def test_alert_test_endpoint_dispatches_matching_seed():
 
     client = client_with(FakeRustScorer(), alert_admin_token="admin-secret")
     headers = {"X-Alert-Admin-Token": "admin-secret"}
-    assert client.put("/api/v1/alerts", json=alert_config(), headers=headers).status_code == 200
+    assert (
+        client.put("/api/v1/alerts", json=alert_config(), headers=headers).status_code
+        == 200
+    )
 
     with (
         patch("xreach_radar.alerts.urlopen", return_value=Response()) as send,

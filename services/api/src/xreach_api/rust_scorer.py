@@ -22,8 +22,7 @@ class RustScorer:
         self._root = Path(__file__).resolve().parents[4]
         self._manifest = self._root / "services/api/rust-bridge/Cargo.toml"
         self._default_binary = (
-            self._root
-            / "services/api/rust-bridge/target/release/xreach-api-scorer"
+            self._root / "services/api/rust-bridge/target/release/xreach-api-scorer"
         )
         self._timeout_seconds = timeout_seconds
         self._build_lock = threading.Lock()
@@ -31,12 +30,17 @@ class RustScorer:
     def score(
         self,
         candidate: dict[str, Any],
+        score_calibration: dict[str, Any] | None = None,
+        *,
         reach_calibration: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         binary = self._binary()
         request = dict(candidate)
-        if reach_calibration is not None:
-            request["reach_calibration"] = reach_calibration
+        if score_calibration is not None and reach_calibration is not None:
+            raise ValueError("configure score_calibration only once")
+        calibration = score_calibration or reach_calibration
+        if calibration is not None:
+            request["score_calibration"] = calibration
         try:
             completed = subprocess.run(
                 [str(binary)],
@@ -75,7 +79,13 @@ class RustScorer:
                 )
             try:
                 completed = subprocess.run(
-                    [cargo, "build", "--release", "--manifest-path", str(self._manifest)],
+                    [
+                        cargo,
+                        "build",
+                        "--release",
+                        "--manifest-path",
+                        str(self._manifest),
+                    ],
                     capture_output=True,
                     check=False,
                     text=True,
@@ -85,6 +95,9 @@ class RustScorer:
             except (OSError, subprocess.TimeoutExpired) as error:
                 raise ScorerUnavailable("Rust scorer build did not complete") from error
             if completed.returncode != 0 or not self._default_binary.is_file():
-                detail = completed.stderr.strip() or "Cargo did not produce the scorer binary"
+                detail = (
+                    completed.stderr.strip()
+                    or "Cargo did not produce the scorer binary"
+                )
                 raise ScorerUnavailable(detail)
             return self._default_binary
