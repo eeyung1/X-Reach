@@ -554,3 +554,25 @@ Append-only completed-work evidence.
 - CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone Build, API Tests, Radar Tests, Docker Build & Compose Stack E2E)
 - Integrated into main: commit via no-ff merge.
 - Recorded UTC: 2026-11-04T21:47:52Z
+
+## task-archive-ingest-engine handoff — 2026-11-04T22:07:49Z
+- Feature/session: `task-archive-ingest-engine` / `GPT56Sol-20261104-task25-b84d-20261104-aa2bede4`.
+- Claim: `gpt56sol-task25-20261104-b84d` for `services/radar/`.
+- Branch/worktree: `agent/task-archive-ingest-engine` at `/home/eeyung/Projects/X-Reach/.agent-worktrees/task-archive-ingest-engine`.
+- Commit: `8a7879d222e16fc654a1d61d797e0c30e305655d` (`feat: ingest first-party X archives`).
+- Files: `services/radar/src/xreach_radar/archive_ingest.py`, public exports and CLI wiring, radar README, and `services/radar/tests/test_archive_ingest.py`.
+- Implementation: bounded zero-API parser for official X `tweets.js` assignments and header-based CSV exports; records only observed impressions; classifies text/image/video/GIF/link/poll/mixed formats; suppresses duplicate IDs; reports skipped records and per-format statistics; computes author baseline `mu` and `sigma` as population statistics over natural-log impressions with a documented floor of one.
+- Validation passed: `pytest services/radar/tests/` (36 passed); `ruff check services/radar/src services/radar/tests`; Ruff format checks on changed Python files; `python3 -m compileall -q services/radar/src services/radar/tests`; `git diff --cached --check`.
+- PR/CI/deployment: not performed by worker under the decoupled publication policy.
+- Remaining gate: Planner/Integrator publishes the branch, validates this exact commit in CI, and integrates it before unblocking Task 26.
+- Remote Branch: origin/agent/task-archive-ingest-engine (HEAD 8a7879d222e16fc654a1d61d797e0c30e305655d)
+- GitHub Actions CI Run: 41922834670
+- CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone Build, API Tests, Radar Tests, Docker Build & Compose Stack E2E)
+- Integrated into main: commit via no-ff merge.
+
+## task-archive-ingest-engine — gpt56sol-task25-20261104-b84d
+- Session: GPT56Sol-20261104-task25-b84d-20261104-aa2bede4
+- State: COMPLETE
+- Validation: /bin/bash -lc /tmp/opencode/xreach-task23-venv/bin/pytest services/radar/tests/ && /tmp/opencode/xreach-task23-venv/bin/ruff check services/radar/src services/radar/tests && /tmp/opencode/xreach-task23-venv/bin/ruff format --check services/radar/src/xreach_radar/archive_ingest.py services/radar/src/xreach_radar/__init__.py services/radar/src/xreach_radar/cli.py services/radar/tests/test_archive_ingest.py && python3 -m compileall -q services/radar/src services/radar/tests
+- Evidence: ============================= test session starts ==============================; platform linux -- Python 3.14.4, pytest-8.4.2, pluggy-1.7.0; rootdir: /home/eeyung/Projects/X-Reach/.agent-worktrees/task-archive-ingest-engine/services/radar; configfile: pyproject.toml; plugins: anyio-4.16.0; collected 36 items; ; services/radar/tests/test_alerts.py ......                               [ 16%]; services/radar/tests/test_archive_ingest.py ......                       [ 33%]; services/radar/tests/test_cdp_client.py .....                            [ 47%]; services/radar/tests/test_daemon.py ....                                 [ 58%]; services/radar/tests/test_graphql_sniffer.py ....                        [ 69%]; services/radar/tests/test_seed_scout.py .....                            [ 83%]; services/radar/tests/test_simclusters.py ......                          [100%]; ; ============================== 36 passed in 0.15s ==============================; All checks passed!; 4 files already formatted
+- Recorded UTC: 2026-11-04T22:12:18Z

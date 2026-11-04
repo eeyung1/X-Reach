@@ -38,10 +38,17 @@
 - **2026-11-04**: Integrated Task 23 (`task-claim-audit-labels`) into `main` following 100% pass on GitHub Actions CI run 41914347221. All model score percentile uncertainty labels, DKW empirical confidence bands, and Local Topic Codes verified. Task 24 (`task-data-contract-schemas`) unblocked and marked Unclaimed (Ready).
 - **2026-11-04**: Decoupled Task 25 (`task-archive-ingest-engine`) from Task 24. Task 24 file scope is strictly bounded to `services/api/` (Pydantic contract schemas). Task 25 file scope is strictly bounded to `services/radar/` (archive parser & baseline distributions). Since the scopes are completely disjoint, both tasks are unblocked and running in parallel. Worker `Codex-20261104-task24-20261104-62aecb92` claimed Task 24; Task 25 is marked Unclaimed (Ready) for immediate concurrent claim.
 - **2026-11-04**: Integrated Task 24 (`task-data-contract-schemas`) into `main` following 100% pass on GitHub Actions CI run 41919884728. Versioned telemetry contract schemas (Pydantic v2) verified across all 43 API tests. Reconciled coordination state discrepancy (Codex session marked COMPLETE). Task 25 (`task-archive-ingest-engine`) actively executing under worker GPT56Sol.
+- **2026-11-04**: Integrated Task 25 (`task-archive-ingest-engine`) into `main` following 100% pass on GitHub Actions CI run 41922834670. First-party archive parser (`tweets.js` and CSV exports) and author baseline distributions verified across all 36 radar tests. Downstream task 26 (`task-closed-loop-telemetry`) unblocked and marked Unclaimed (Ready).
 
 
 
 ## Blockers and Proposed Decisions
+
+- **2026-11-04T22:13:00Z — task-archive-ingest-engine CI verification & integration (RESOLVED)**:
+  - Worker commit `8a7879d` was pushed to `origin/agent/task-archive-ingest-engine`.
+  - Remote GitHub Actions CI run `41922834670` passed 100% across all 6 test suites (Web Drop-Zone, Rust Core, Multimodal, API, Radar, and Docker Build & Compose Stack E2E).
+  - Branch merged into `main` via `git merge --no-ff`.
+  - Worktree cleaned, branch deleted. Downstream task 26 (`task-closed-loop-telemetry`) is now unblocked and ready for worker claim.
 
 - **2026-11-04T21:54:00Z — task-data-contract-schemas CI verification & integration (RESOLVED)**:
   - Worker commit `f915a7d` was pushed to `origin/agent/task-data-contract-schemas`.
