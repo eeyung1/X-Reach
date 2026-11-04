@@ -9,6 +9,7 @@ services:
     restart: unless-stopped
     environment:
       XREACH_RADAR_INGEST_TOKEN: ${XREACH_RADAR_INGEST_TOKEN:-local-compose-token}
+      XREACH_ALERT_ADMIN_TOKEN: ${XREACH_ALERT_ADMIN_TOKEN:-local-alert-admin-token}
       XREACH_REACH_CALIBRATION_FILE: ${XREACH_REACH_CALIBRATION_FILE:-}
     volumes:
       - model-cache:/models
@@ -71,6 +72,19 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+
+  webhook-listener:
+    image: python:3.11-alpine
+    command: [python, /app/webhook_listener.py]
+    ports:
+      - 127.0.0.1:${XREACH_E2E_WEBHOOK_PORT:-18081}:9000
+    volumes:
+      - ./tests/e2e/webhook_listener.py:/app/webhook_listener.py:ro
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/events', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
 
 volumes:
   model-cache:
