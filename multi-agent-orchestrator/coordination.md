@@ -48,10 +48,17 @@
      - Task 29 (`task-radar-persistence-export`): Connect radar archive ingest engine and CLI to DB repository, write baselines and post impressions directly to DB (runs in parallel with Task 28).
      - Task 30 (`task-compose-persistence-e2e`): Compose read-write `/data` volume configuration and E2E persistence verification across container restarts.
   3. **Execution Status**: Task 27 is unblocked and marked Unclaimed (Ready). Worker agents may claim immediately.
+- **2026-11-05**: Integrated Task 27 (`task-db-repository-schema`) into `main` following 100% pass on GitHub Actions CI run 42092015186. SQLite WAL database connection, schema migration runner, and typed repository CRUD verified across all 51 API tests. Pull request #1 merged into `main` (`d6a7153`). Downstream tasks 28 (`task-api-persistence-migration`) and 29 (`task-radar-persistence-export`) have disjoint scopes and are unblocked for parallel execution.
 
 
 
 ## Blockers and Proposed Decisions
+
+- **2026-11-05T19:18:00Z — task-db-repository-schema CI verification & integration (RESOLVED)**:
+  - Worker commit `eb22e70` was pushed to `origin/agent/task-db-repository-schema`. PR #1 opened.
+  - Remote GitHub Actions CI run `42092015186` passed 100% across all 6 test suites (Web Drop-Zone, Rust Core, Multimodal, API, Radar, and Docker Build & Compose Stack E2E).
+  - Merged into `main` via PR #1 (`d6a7153`).
+  - Worktree cleaned, branch deleted, session marked COMPLETE. Downstream tasks 28 and 29 unblocked for concurrent worker execution.
 
 - **2026-11-05T18:16:30Z — task-closed-loop-telemetry CI verification & integration (RESOLVED)**:
   - Worker commit `7b7c228` was pushed to `origin/agent/task-closed-loop-telemetry`.
