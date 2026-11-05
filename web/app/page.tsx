@@ -106,6 +106,15 @@ type RadarSeed = {
 type RadarEntry = { seed: RadarSeed; receivedAt: number };
 type RadarConnection = "connecting" | "live" | "reconnecting" | "offline";
 
+type TelemetrySummary = {
+  drafts: number;
+  published: number;
+  outcomes_24h: number;
+  outcomes_7d: number;
+  mean_creator_lift_delta_percent: number | null;
+  creator_lift_sample_size: number;
+};
+
 const MAX_MEDIA = 4;
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
@@ -334,6 +343,7 @@ export default function Home() {
   const [radarFilterRevision, setRadarFilterRevision] = useState(0);
   const [radarNotice, setRadarNotice] = useState("");
   const [radarNow, setRadarNow] = useState(0);
+  const [telemetry, setTelemetry] = useState<TelemetrySummary | null>(null);
   const [activeReplyTarget, setActiveReplyTarget] = useState<ReplyTarget | null>(null);
   const [replyText, setReplyText] = useState("");
   const [replyBusy, setReplyBusy] = useState(false);
@@ -359,6 +369,26 @@ export default function Home() {
     const timer = window.setInterval(() => setRadarNow(Date.now()), 5_000);
     setRadarNow(Date.now());
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/v1/telemetry/summary");
+        if (!response.ok) return;
+        const summary = (await response.json()) as TelemetrySummary;
+        if (active) setTelemetry(summary);
+      } catch {
+        // Telemetry remains unavailable until the API can be reached.
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -835,10 +865,32 @@ export default function Home() {
         </aside>
       </div>
 
+      <section className="radar-panel panel" aria-labelledby="telemetry-title">
+        <div className="panel-heading radar-heading">
+          <div>
+            <span className="step">04 / PUBLISHED OUTCOMES</span>
+            <h2 id="telemetry-title">Creator telemetry</h2>
+          </div>
+          <span className="radar-connection">{telemetry ? "SYNCED" : "AWAITING DATA"}</span>
+        </div>
+        <div className="radar-metrics" aria-live="polite">
+          <span>{telemetry?.published ?? 0} attributed posts</span>
+          <span>{telemetry?.outcomes_24h ?? 0} 24h · {telemetry?.outcomes_7d ?? 0} 7d snapshots</span>
+          <span>
+            Creator Lift Delta {telemetry?.mean_creator_lift_delta_percent == null
+              ? "—"
+              : `${telemetry.mean_creator_lift_delta_percent >= 0 ? "+" : ""}${telemetry.mean_creator_lift_delta_percent.toFixed(1)}%`}
+          </span>
+        </div>
+        <p className="radar-toolbar">
+          Lift compares observed 24h impressions with the supplied creator baseline; {telemetry?.creator_lift_sample_size ?? 0} posts included.
+        </p>
+      </section>
+
       <section className="radar-panel panel" aria-labelledby="radar-title">
         <div className="panel-heading radar-heading">
           <div>
-            <span className="step">03 / LIVE SIGNALS</span>
+            <span className="step">05 / LIVE SIGNALS</span>
             <h2 id="radar-title">Radar opportunities</h2>
           </div>
           <span className={`radar-connection ${radarConnection}`}>
