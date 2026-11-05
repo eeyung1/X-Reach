@@ -576,3 +576,20 @@ Append-only completed-work evidence.
 - Validation: /bin/bash -lc /tmp/opencode/xreach-task23-venv/bin/pytest services/radar/tests/ && /tmp/opencode/xreach-task23-venv/bin/ruff check services/radar/src services/radar/tests && /tmp/opencode/xreach-task23-venv/bin/ruff format --check services/radar/src/xreach_radar/archive_ingest.py services/radar/src/xreach_radar/__init__.py services/radar/src/xreach_radar/cli.py services/radar/tests/test_archive_ingest.py && python3 -m compileall -q services/radar/src services/radar/tests
 - Evidence: ============================= test session starts ==============================; platform linux -- Python 3.14.4, pytest-8.4.2, pluggy-1.7.0; rootdir: /home/eeyung/Projects/X-Reach/.agent-worktrees/task-archive-ingest-engine/services/radar; configfile: pyproject.toml; plugins: anyio-4.16.0; collected 36 items; ; services/radar/tests/test_alerts.py ......                               [ 16%]; services/radar/tests/test_archive_ingest.py ......                       [ 33%]; services/radar/tests/test_cdp_client.py .....                            [ 47%]; services/radar/tests/test_daemon.py ....                                 [ 58%]; services/radar/tests/test_graphql_sniffer.py ....                        [ 69%]; services/radar/tests/test_seed_scout.py .....                            [ 83%]; services/radar/tests/test_simclusters.py ......                          [100%]; ; ============================== 36 passed in 0.15s ==============================; All checks passed!; 4 files already formatted
 - Recorded UTC: 2026-11-04T22:12:18Z
+
+## task-closed-loop-telemetry — codex-task26-20261105-eeyung-1
+- Session: Codex-20261105-task26-20261105-52c06b59
+- State: COMPLETE
+- Validation: npm --prefix web run build -- --webpack
+- Evidence: > x-reach-web@0.1.0 build; > next build --webpack; ; ▲ Next.js 16.4.4 (webpack); ✓ Running next.config.ts took 39ms; ;   Creating an optimized production build ...; ✓ Compiled successfully in 7.3s;   Running TypeScript ...;   Finished TypeScript in 568ms ...;   Collecting page data using 4 workers ...;   Generating static pages using 4 workers (0/3) ...; ✓ Generating static pages using 4 workers (3/3) in 977ms;   Finalizing page optimization ...;   Collecting build traces ...; ; Route (app); ┌ ○ /; └ ○ /_not-found; ; ; ○  (Static)  prerendered as static content
+- Recorded UTC: 2026-11-05T18:10:11Z
+- Commit: `7b7c228` (`feat: add closed-loop creator telemetry`) on `agent/task-closed-loop-telemetry`.
+- Files: `services/api/src/xreach_api/telemetry.py`, `services/api/src/xreach_api/main.py`, `services/api/tests/test_telemetry.py`, `services/api/README.md`, `web/app/page.tsx`.
+- Additional validation: `docker run --rm -v "$PWD:/workspace" -w /workspace python:3.11-slim-bookworm sh -lc 'python -m pip install -q "fastapi[standard]>=0.115,<1.0" "pydantic>=2.7,<3.0" "httpx>=0.27,<1.0" "pytest>=8.0,<9.0" && PYTHONPATH=services/api/src:services/radar/src python -m pytest services/api/tests/'` — 45 passed. The specified Turbopack build failed because its CSS worker could not bind a local port; the successful webpack build compiled and passed TypeScript.
+- PR/CI/deployment: not performed by worker under the decoupled publication policy. Planner/Integrator owns publication, exact-commit CI, and merge.
+- Remaining gate: publish branch, pass CI, then integrate task 26.
+- Remote Branch: origin/agent/task-closed-loop-telemetry (HEAD 7b7c228e64489f7eba702fb93f8ba3bace644116)
+- GitHub Actions CI Run: 42082117507
+- CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone Build, API Tests, Radar Tests, Docker Build & Compose Stack E2E)
+- Integrated into main: commit via no-ff merge.
+- Milestone: Milestone 7 Complete (all tasks 23-26 validated in CI and integrated).
