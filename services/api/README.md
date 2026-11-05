@@ -100,9 +100,13 @@ received by `/api/v1/radar/events` are dispatched in a FastAPI background task.
 }
 ```
 
-Alert settings are held in process memory and must be configured again after a
-restart. Keep one API worker while relying on radar ingestion and alert delivery,
-as each process has its own settings and event buffer.
+Alert rules and webhook targets are stored in SQLite and loaded from the
+repository when handling requests. Set `XREACH_DATABASE_PATH` to the database
+file location; it defaults to `/tmp/xreach.sqlite3`. Use a persistent writable
+volume for data that must survive container replacement. The database uses WAL
+mode and restricts its file permissions because it contains webhook secrets.
+Keep one API worker while relying on radar ingestion, since the radar event ring
+is still process-local.
 
 ## Versioned telemetry contracts
 
@@ -122,8 +126,10 @@ requires every outcome's `draft_id` and `published_tweet_id` to match its
 registered publication. `GET /api/v1/telemetry/summary` reports attributed
 posts, horizon coverage, and mean Creator Lift Delta. Lift is the mean percent
 difference between observed 24h impressions and the supplied creator baseline;
-posts without a positive baseline are excluded. This initial store is
-process-local, so it resets on restart and should run as a single API worker.
+posts without a positive baseline are excluded. Drafts, attributions, and
+outcomes are stored through the SQLite repository and persist across API app
+restarts when the same database file is used. Schema migrations apply
+automatically when the repository opens.
 
 ```json
 {

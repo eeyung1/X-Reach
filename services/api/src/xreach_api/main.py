@@ -7,10 +7,11 @@ import hmac
 import json
 import logging
 import os
+import sqlite3
 import sys
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, suppress
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -21,24 +22,23 @@ from starlette.datastructures import UploadFile
 from starlette.responses import StreamingResponse
 
 from .calibration import ScoreCalibrationConfig
+from .db import Database, Repository
 from .models import (
     AlertConfigurationRequest,
     AlertConfigurationResponse,
-    AlertRuleConfig,
     AlertTestRequest,
     AnalyzeRequest,
     AnalyzeResponse,
     AutomaticAnalyzeRequest,
     CandidateInput,
     MultimodalOutput,
+    OutcomeSnapshotRecord,
     PercentileBounds,
     PlacementRequest,
-    RadarIngestRequest,
-    OutcomeSnapshotRecord,
     PublicationContextRecord,
+    RadarIngestRequest,
     ScoreOutput,
 )
-from .telemetry import DraftTelemetryRequest, TelemetryStore
 from .multimodal import (
     MediaUpload,
     MultimodalBackend,
@@ -52,6 +52,7 @@ from .radar_stream import (
     encode_sse,
 )
 from .rust_scorer import RustScorer, ScorerUnavailable
+from .telemetry import DraftTelemetryRequest, TelemetryStore
 
 MAX_MEDIA_BYTES = 50 * 1024 * 1024
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -76,6 +77,8 @@ def create_app(
     alert_admin_token: str | None = None,
     *,
     reach_calibration: ScoreCalibrationConfig | None = None,
+    database: Database | None = None,
+    database_path: str | Path | None = None,
 ) -> FastAPI:
     if not 0.1 <= radar_heartbeat_seconds <= 300:
         raise ValueError("radar heartbeat interval must be between 0.1 and 300 seconds")
@@ -88,6 +91,13 @@ def create_app(
     )
     event_buffer = radar_events or RadarEventBuffer()
     producer = radar_producer or default_radar_producer(event_buffer)
+    if database is not None and database_path is not None:
+        raise ValueError("configure database or database_path, not both")
+    owns_database = database is None
+    database = database or Database(
+        database_path or os.environ.get("XREACH_DATABASE_PATH", "/tmp/xreach.sqlite3")
+    )
+    repository = Repository(database)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -99,6 +109,8 @@ def create_app(
             producer_task.cancel()
             with suppress(asyncio.CancelledError):
                 await producer_task
+            if owns_database:
+                database.close()
 
     app = FastAPI(
         title="X-Reach API",
@@ -116,6 +128,8 @@ def create_app(
     app.state.score_calibration = calibration
     app.state.radar_events = event_buffer
     app.state.radar_producer = producer
+    app.state.database = database
+    app.state.repository = repository
     app.state.radar_heartbeat_seconds = radar_heartbeat_seconds
     app.state.radar_ingest_token = (
         radar_ingest_token
@@ -127,12 +141,17 @@ def create_app(
         if alert_admin_token is not None
         else os.environ.get("XREACH_ALERT_ADMIN_TOKEN")
     ) or None
-    app.state.alert_rules = []
-    app.state.alert_webhooks = {}
-    app.state.telemetry = TelemetryStore()
+    app.state.telemetry = TelemetryStore(repository)
 
     @app.get("/healthz")
     def health() -> dict[str, str]:
+        try:
+            with app.state.database.read() as connection:
+                connection.execute("SELECT 1").fetchone()
+        except (sqlite3.Error, RuntimeError) as error:
+            raise HTTPException(
+                status_code=503, detail="database is unavailable"
+            ) from error
         return {"status": "ok", "scoring_engine": "rust-core"}
 
     @app.post("/api/v1/telemetry/drafts", status_code=201)
@@ -218,7 +237,7 @@ def create_app(
                             queue.get(), timeout=app.state.radar_heartbeat_seconds
                         )
                     except TimeoutError:
-                        heartbeat = datetime.now(timezone.utc).isoformat()
+                        heartbeat = datetime.now(UTC).isoformat()
                         yield f'event: heartbeat\ndata: {{"timestamp":"{heartbeat}"}}\n\n'
                     else:
                         dropped_through = (
@@ -298,24 +317,14 @@ def create_app(
         x_alert_admin_token: str | None = Header(default=None),
     ) -> AlertConfigurationResponse:
         _require_alert_admin(app, x_alert_admin_token)
-        AlertRule, _, _, WebhookTarget = _alert_components()
-        app.state.alert_rules = [
-            AlertRule(
-                rule.rule_id,
-                rule.min_views_per_minute,
-                rule.max_age_minutes,
-                frozenset(rule.simclusters),
+        try:
+            app.state.repository.replace_alert_configuration(
+                rules=configuration.rules, webhooks=configuration.webhooks
             )
-            for rule in configuration.rules
-        ]
-        app.state.alert_webhooks = {
-            webhook.webhook_id: WebhookTarget(
-                webhook.url,
-                webhook.secret,
-                format=webhook.format,
-            )
-            for webhook in configuration.webhooks
-        }
+        except (sqlite3.Error, ValueError) as error:
+            raise HTTPException(
+                status_code=503, detail="could not persist alert configuration"
+            ) from error
         return _alert_configuration_response(app)
 
     @app.post("/api/v1/alerts/test")
@@ -324,26 +333,43 @@ def create_app(
         x_alert_admin_token: str | None = Header(default=None),
     ) -> dict[str, Any]:
         _require_alert_admin(app, x_alert_admin_token)
-        rules = {rule.rule_id: rule for rule in app.state.alert_rules}
+        rules = {rule.rule_id: rule for rule in app.state.repository.list_alert_rules()}
         rule = rules.get(payload.rule_id)
         if rule is None:
             raise HTTPException(status_code=404, detail="alert rule not found")
-        if not app.state.alert_webhooks:
+        webhooks = app.state.repository.list_alert_webhooks()
+        if not webhooks:
             raise HTTPException(
                 status_code=409, detail="no alert webhooks are configured"
             )
-        _, AlertRuleEngine, WebhookDispatcher, _ = _alert_components()
-        events = AlertRuleEngine([rule]).evaluate(payload.seed)
+        AlertRule, AlertRuleEngine, WebhookDispatcher, WebhookTarget = (
+            _alert_components()
+        )
+        runtime_rule = AlertRule(
+            rule.rule_id,
+            rule.min_views_per_minute,
+            rule.max_age_minutes,
+            frozenset(rule.simclusters),
+        )
+        events = AlertRuleEngine([runtime_rule]).evaluate(payload.seed)
         if not events:
             raise HTTPException(
                 status_code=422,
                 detail="seed does not satisfy the selected alert rule",
             )
-        dispatcher = WebhookDispatcher(list(app.state.alert_webhooks.values()))
+        dispatcher = WebhookDispatcher(
+            [
+                WebhookTarget(webhook.url, webhook.secret, format=webhook.format)
+                for webhook in webhooks
+            ]
+        )
         deliveries = await dispatcher.dispatch(events[0])
         return {
             "event_id": events[0].event_id,
-            "deliveries": dict(zip(app.state.alert_webhooks, deliveries, strict=True)),
+            "deliveries": {
+                webhook.webhook_id: delivered
+                for webhook, delivered in zip(webhooks, deliveries, strict=True)
+            },
         }
 
     @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
@@ -695,32 +721,44 @@ def _require_alert_admin(app: FastAPI, supplied: str | None) -> None:
 
 
 def _alert_configuration_response(app: FastAPI) -> AlertConfigurationResponse:
+    rules = app.state.repository.list_alert_rules()
+    webhooks = app.state.repository.list_alert_webhooks()
     return AlertConfigurationResponse(
-        rules=[
-            AlertRuleConfig(
-                rule_id=rule.rule_id,
-                min_views_per_minute=rule.min_views_per_minute,
-                max_age_minutes=rule.max_age_minutes,
-                simclusters=sorted(rule.simclusters),
-            )
-            for rule in app.state.alert_rules
-        ],
+        rules=rules,
         webhooks=[
-            {"webhook_id": webhook_id, "format": target.format}
-            for webhook_id, target in app.state.alert_webhooks.items()
+            {"webhook_id": webhook.webhook_id, "format": webhook.format}
+            for webhook in webhooks
         ],
     )
 
 
 async def _dispatch_seed_alerts(app: FastAPI, seed: Mapping[str, Any]) -> None:
-    if not app.state.alert_rules or not app.state.alert_webhooks:
-        return
     try:
-        _, AlertRuleEngine, WebhookDispatcher, _ = _alert_components()
-        events = AlertRuleEngine(app.state.alert_rules).evaluate(seed)
+        rules = app.state.repository.list_alert_rules()
+        webhooks = app.state.repository.list_alert_webhooks()
+        if not rules or not webhooks:
+            return
+        AlertRule, AlertRuleEngine, WebhookDispatcher, WebhookTarget = (
+            _alert_components()
+        )
+        runtime_rules = [
+            AlertRule(
+                rule.rule_id,
+                rule.min_views_per_minute,
+                rule.max_age_minutes,
+                frozenset(rule.simclusters),
+            )
+            for rule in rules
+        ]
+        events = AlertRuleEngine(runtime_rules).evaluate(seed)
         if not events:
             return
-        dispatcher = WebhookDispatcher(list(app.state.alert_webhooks.values()))
+        dispatcher = WebhookDispatcher(
+            [
+                WebhookTarget(webhook.url, webhook.secret, format=webhook.format)
+                for webhook in webhooks
+            ]
+        )
         for event in events:
             results = await dispatcher.dispatch(event)
             if not all(results):

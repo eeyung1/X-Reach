@@ -1,12 +1,13 @@
-"""Process-local closed-loop attribution and creator lift summaries."""
+"""Closed-loop telemetry service backed by the API database repository."""
 
 from __future__ import annotations
 
-from threading import RLock
-from uuid import UUID
+import sqlite3
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
+from .db import Repository
+from .db.models import DraftRegistrationRecord
 from .models import DraftInputRecord, OutcomeSnapshotRecord, PublicationContextRecord
 
 
@@ -19,57 +20,68 @@ class DraftTelemetryRequest(BaseModel):
 
 
 class TelemetryStore:
-    """In-memory bridge; callers can replace it with durable storage later."""
+    """Preserve telemetry endpoint semantics while delegating storage to SQLite."""
 
-    def __init__(self) -> None:
-        self._lock = RLock()
-        self._drafts: dict[UUID, DraftTelemetryRequest] = {}
-        self._publications: dict[UUID, PublicationContextRecord] = {}
-        self._outcomes: dict[tuple[UUID, str], OutcomeSnapshotRecord] = {}
+    def __init__(self, repository: Repository) -> None:
+        self.repository = repository
 
     def register_draft(self, item: DraftTelemetryRequest) -> DraftTelemetryRequest:
-        with self._lock:
-            existing = self._drafts.get(item.draft.draft_id)
-            if existing and existing != item:
-                raise ValueError("draft_id is already registered with different data")
-            self._drafts[item.draft.draft_id] = item
+        draft_id = item.draft.draft_id
+        existing = self.repository.get_draft_registration(draft_id)
+        if existing:
+            if self._same_draft_registration(existing, item):
+                return item
+            raise ValueError("draft_id is already registered with different data")
+        try:
+            self.repository.create_draft(
+                item.draft,
+                creator_id=item.creator_id,
+                baseline_24h_impressions=item.baseline_24h_impressions,
+            )
+        except sqlite3.IntegrityError as error:
+            existing = self.repository.get_draft_registration(draft_id)
+            if existing and self._same_draft_registration(existing, item):
+                return item
+            raise ValueError("draft_id is already registered") from error
         return item
 
     def publish(self, item: PublicationContextRecord) -> PublicationContextRecord:
-        with self._lock:
-            if item.draft_id not in self._drafts:
-                raise KeyError("draft_id is not registered")
-            existing = self._publications.get(item.draft_id)
-            if existing and existing != item:
-                raise ValueError("draft_id is already attributed to another publication")
-            self._publications[item.draft_id] = item
+        existing = self.repository.get_attribution(item.draft_id)
+        if existing:
+            if existing == item:
+                return item
+            raise ValueError("draft_id is already attributed to another publication")
+        if self.repository.get_draft_registration(item.draft_id) is None:
+            raise KeyError("draft_id is not registered")
+        try:
+            self.repository.create_attribution(item)
+        except sqlite3.IntegrityError as error:
+            existing = self.repository.get_attribution(item.draft_id)
+            if existing == item:
+                return item
+            raise ValueError("published_tweet_id is already attributed") from error
         return item
 
     def record_outcome(self, item: OutcomeSnapshotRecord) -> OutcomeSnapshotRecord:
-        with self._lock:
-            publication = self._publications.get(item.draft_id)
-            if publication is None:
-                raise KeyError("draft_id has no registered publication")
-            if publication.published_tweet_id != item.published_tweet_id:
-                raise ValueError("published_tweet_id does not match draft attribution")
-            if item.horizon not in {"24h", "7d"}:
-                raise ValueError("closed-loop outcomes support only 24h and 7d horizons")
-            key = (item.draft_id, item.horizon)
-            existing = self._outcomes.get(key)
-            if existing and item.observed_at < existing.observed_at:
-                raise ValueError("outcome observations must not move backwards in time")
-            self._outcomes[key] = item
+        if item.horizon not in {"24h", "7d"}:
+            raise ValueError("closed-loop outcomes support only 24h and 7d horizons")
+        try:
+            self.repository.save_outcome(item)
+        except KeyError as error:
+            raise KeyError("draft_id has no registered publication") from error
         return item
 
     def summary(self) -> dict[str, object]:
-        with self._lock:
-            drafts = list(self._drafts.values())
-            publications = dict(self._publications)
-            outcomes = dict(self._outcomes)
+        drafts = self.repository.list_draft_registrations()
+        publications = self.repository.list_attributions()
+        outcomes = self.repository.list_outcomes()
+        published_ids = {item.draft_id for item in publications}
+        outcomes_by_key = {(item.draft_id, item.horizon): item for item in outcomes}
         lifts: list[float] = []
-        for draft_id, item in {item.draft.draft_id: item for item in drafts}.items():
-            outcome = outcomes.get((draft_id, "24h"))
-            baseline = item.baseline_24h_impressions
+        for registration in drafts:
+            draft_id = registration.draft.draft_id
+            outcome = outcomes_by_key.get((draft_id, "24h"))
+            baseline = registration.baseline_24h_impressions
             if (
                 outcome
                 and outcome.impressions is not None
@@ -81,13 +93,23 @@ class TelemetryStore:
             "drafts": len(drafts),
             "published": len(publications),
             "outcomes_24h": sum(
-                (draft_id, "24h") in outcomes for draft_id in publications
+                (draft_id, "24h") in outcomes_by_key for draft_id in published_ids
             ),
             "outcomes_7d": sum(
-                (draft_id, "7d") in outcomes for draft_id in publications
+                (draft_id, "7d") in outcomes_by_key for draft_id in published_ids
             ),
             "mean_creator_lift_delta_percent": (
                 sum(lifts) / len(lifts) if lifts else None
             ),
             "creator_lift_sample_size": len(lifts),
         }
+
+    @staticmethod
+    def _same_draft_registration(
+        existing: DraftRegistrationRecord, requested: DraftTelemetryRequest
+    ) -> bool:
+        return (
+            existing.creator_id == requested.creator_id
+            and existing.baseline_24h_impressions == requested.baseline_24h_impressions
+            and existing.draft == requested.draft
+        )
