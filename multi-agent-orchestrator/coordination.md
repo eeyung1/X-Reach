@@ -51,10 +51,17 @@
 - **2026-11-05**: Integrated Task 27 (`task-db-repository-schema`) into `main` following 100% pass on GitHub Actions CI run 42092015186. SQLite WAL database connection, schema migration runner, and typed repository CRUD verified across all 51 API tests. Pull request #1 merged into `main` (`d6a7153`). Downstream tasks 28 (`task-api-persistence-migration`) and 29 (`task-radar-persistence-export`) have disjoint scopes and are unblocked for parallel execution.
 - **2026-11-05**: Integrated Task 29 (`task-radar-persistence-export`) into `main` following 100% pass on GitHub Actions CI run 42094930406. SQLite archive baseline persistence, impression storage, and CLI/URL configuration verified across all 45 radar tests. Pull request #2 merged into `main` (`4978a67`). Task 28 is actively in progress under worker Codex.
 - **2026-11-05**: Integrated Task 28 (`task-api-persistence-migration`) into `main` following 100% pass on GitHub Actions CI run 42097715963. SQLite repository wiring across FastAPI telemetry and alert endpoints, plus database connectivity check on `GET /healthz`, verified across all 52 API tests. Pull request #3 merged into `main` (`e2e6aa1`). All upstream dependencies satisfied for Task 30 (`task-compose-persistence-e2e`); Task 30 is now UNBLOCKED and marked Unclaimed (Ready).
+- **2026-11-05**: Integrated Task 30 (`task-compose-persistence-e2e`) into `main` following 100% pass on GitHub Actions CI run 42104850514. Read-write `/data` volume mount, database environment defaults, and container restart persistence verified across all Compose E2E tests on production container images. Pull request #4 merged into `main` (`1b15c09`). **MILESTONE 8 (Production Persistence Engine & Resilient Storage) IS 100% COMPLETE.** All 4 backlog features (tasks 27-30) validated in remote CI and integrated into `main`. Total merged features across Milestones 1–8: 30.
 
 
 
 ## Blockers and Proposed Decisions
+
+- **2026-11-05T20:39:00Z — task-compose-persistence-e2e CI verification & integration (RESOLVED)**:
+  - Worker commit `fff3678` was pushed to `origin/agent/task-compose-persistence-e2e`. PR #4 opened.
+  - Remote GitHub Actions CI run `42104850514` passed 100% across all 6 test suites (Web Drop-Zone, Rust Core, Multimodal, API, Radar, and Docker Build & Compose Stack E2E: 4 tests passed including restart persistence).
+  - Merged into `main` via PR #4 (`1b15c09`).
+  - Worktree cleaned, branch deleted, session marked COMPLETE in state.json. **Milestone 8 complete.**
 
 - **2026-11-05T19:53:00Z — task-api-persistence-migration CI verification & integration (RESOLVED)**:
   - Worker commit `f826e4e` was pushed to `origin/agent/task-api-persistence-migration`. PR #3 opened.
@@ -136,3 +143,5 @@
 - **2026-11-03T14:50:29Z — radar claim reconciliation**: the worker release command cleared its claim, but `agentmeeting.md` still shows the task row as Claimed while this session is BLOCKED. Reconcile the backlog row before assigning dependent task 11.
 
 - **2026-11-03T14:50:52Z — task-radar-sse-stream publication conflict observed**: the task worktree is now detached at main 3ff4974907dbfe1986f77680e772a2d344baa660 with unresolved index conflicts in services/api/src/xreach_api/main.py and services/api/tests/test_api.py after the task9 merge. The worker claim was released; preserve the integration worktree and have the Planner/Integrator resolve these conflicts. The worker did not modify the integration worktree after handoff.
+
+- 2026-11-05T20:31:46Z — Worker Codex-20261105-task30-20261105-6dc6551e completed task 30 via coordinator validation and released the claim. The markdown ledger records COMPLETE and the task backlog is Done-waiting (Handoff), but structured state.json still reports this session ACTIVE. ORCHESTRATOR/Planner reconciliation is required; no direct state.json edits were made.
