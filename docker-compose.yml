@@ -11,12 +11,13 @@ services:
       XREACH_RADAR_INGEST_TOKEN: ${XREACH_RADAR_INGEST_TOKEN:-local-compose-token}
       XREACH_ALERT_ADMIN_TOKEN: ${XREACH_ALERT_ADMIN_TOKEN:-local-alert-admin-token}
       XREACH_REACH_CALIBRATION_FILE: ${XREACH_REACH_CALIBRATION_FILE:-}
+      XREACH_DATABASE_PATH: ${XREACH_DATABASE_PATH:-/data/xreach.sqlite3}
     volumes:
       - model-cache:/models
       - type: bind
         source: ${XREACH_DATA_DIR:-./data}
         target: /data
-        read_only: true
+        read_only: false
 
   web:
     image: x-reach-web:local

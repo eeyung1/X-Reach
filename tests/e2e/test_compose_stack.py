@@ -6,16 +6,16 @@ import hashlib
 import hmac
 import json
 import os
+import subprocess
 import time
+from datetime import UTC, datetime
+from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
-
 BASE_URL = os.environ.get("XREACH_E2E_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
-INGEST_TOKEN = os.environ.get(
-    "XREACH_RADAR_INGEST_TOKEN", "local-compose-token"
-)
+INGEST_TOKEN = os.environ.get("XREACH_RADAR_INGEST_TOKEN", "local-compose-token")
 ALERT_ADMIN_TOKEN = os.environ.get(
     "XREACH_ALERT_ADMIN_TOKEN", "local-alert-admin-token"
 )
@@ -27,6 +27,7 @@ WEBHOOK_QUERY_URL = os.environ.get(
     "XREACH_E2E_WEBHOOK_QUERY_URL", f"http://127.0.0.1:{WEBHOOK_PORT}/events"
 )
 WEBHOOK_SECRET = "compose-e2e-secret"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _request(
@@ -46,7 +47,11 @@ def _request(
         f"{BASE_URL}{path}", data=body, headers=request_headers, method=method
     )
     with urlopen(request, timeout=15) as response:
-        return response.status, response.read(), response.headers.get("Content-Type", "")
+        return (
+            response.status,
+            response.read(),
+            response.headers.get("Content-Type", ""),
+        )
 
 
 def test_gateway_routes_web_and_api_health() -> None:
@@ -162,9 +167,7 @@ def test_radar_ingest_dispatches_signed_alert_to_compose_webhook() -> None:
         time.sleep(0.25)
 
     matching = [
-        delivery
-        for delivery in deliveries
-        if tweet_id in str(delivery.get("body", ""))
+        delivery for delivery in deliveries if tweet_id in str(delivery.get("body", ""))
     ]
     assert len(matching) == 1
     delivery = matching[0]
@@ -175,3 +178,88 @@ def test_radar_ingest_dispatches_signed_alert_to_compose_webhook() -> None:
     event = json.loads(raw_body)
     assert event["event_id"] == f"{rule_id}:{tweet_id}"
     assert event["seed"]["tweet_id"] == tweet_id
+
+
+def test_api_telemetry_persists_after_compose_container_restart() -> None:
+    before_status, before_body, _ = _request("/api/v1/telemetry/summary")
+    assert before_status == 200
+    before = json.loads(before_body)
+
+    draft_id = str(uuid4())
+    published_tweet_id = f"compose-persist-{uuid4().hex}"
+    timestamp = datetime.now(UTC).isoformat()
+    status, _, _ = _request(
+        "/api/v1/telemetry/drafts",
+        method="POST",
+        payload={
+            "creator_id": "compose-persistence-e2e",
+            "baseline_24h_impressions": 1000,
+            "draft": {"draft_id": draft_id, "text": "Persistence probe"},
+        },
+    )
+    assert status == 201
+    status, _, _ = _request(
+        "/api/v1/telemetry/publications",
+        method="POST",
+        payload={
+            "draft_id": draft_id,
+            "published_tweet_id": published_tweet_id,
+            "surface": "PROFILE_POST",
+            "published_at": timestamp,
+        },
+    )
+    assert status == 201
+    for horizon, impressions in (("24h", 1500), ("7d", 2400)):
+        status, _, _ = _request(
+            "/api/v1/telemetry/outcomes",
+            method="POST",
+            payload={
+                "draft_id": draft_id,
+                "published_tweet_id": published_tweet_id,
+                "horizon": horizon,
+                "observed_at": timestamp,
+                "impressions": impressions,
+                "source": "manual",
+            },
+        )
+        assert status == 201
+
+    written_status, written_body, _ = _request("/api/v1/telemetry/summary")
+    assert written_status == 200
+    written = json.loads(written_body)
+    assert written["published"] == before["published"] + 1
+    assert written["outcomes_24h"] == before["outcomes_24h"] + 1
+    assert written["outcomes_7d"] == before["outcomes_7d"] + 1
+
+    subprocess.run(
+        ["docker", "compose", "restart", "api"],
+        cwd=PROJECT_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        try:
+            health_status, _, _ = _request("/healthz")
+            if health_status == 200:
+                break
+        except URLError:
+            pass
+        time.sleep(1)
+    else:
+        raise AssertionError("API did not become healthy after its Compose restart")
+
+    restored_status, restored_body, _ = _request("/api/v1/telemetry/summary")
+    assert restored_status == 200
+    restored = json.loads(restored_body)
+    for key in (
+        "drafts",
+        "published",
+        "outcomes_24h",
+        "outcomes_7d",
+        "mean_creator_lift_delta_percent",
+        "creator_lift_sample_size",
+    ):
+        assert restored[key] == written[key]
