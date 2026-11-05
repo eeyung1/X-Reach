@@ -636,3 +636,22 @@ Append-only completed-work evidence.
 - CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone Build, API Tests, Radar Tests: 45 passed, Docker Build & Compose Stack E2E)
 - Integrated into main: commit via merge pull request #2 (4978a67).
 - Reconciled session state: GPT56Sol-20261105-task29-7c4e-20261105-4591c4b4 marked COMPLETE in state.json. Task 28 is actively in progress under worker Codex; Task 30 remains blocked on Task 28.
+
+## task-api-persistence-migration — codex-task28-20261105-eeyung-1
+- Session: Codex-20261105-task28-20261105-613eb12b
+- State: COMPLETE
+- Validation: docker run --rm -v /home/eeyung/Projects/X-Reach/.agent-worktrees/task-api-persistence-migration:/workspace -w /workspace python:3.11-slim-bookworm sh -lc python -m pip install -q "fastapi[standard]>=0.115,<1.0" "pydantic>=2.7,<3.0" "httpx>=0.27,<1.0" "pytest>=8.0,<9.0" && PYTHONPATH=services/api/src:services/radar/src python -m pytest services/api/tests/
+- Evidence: WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv; ; [notice] A new release of pip is available: 24.0 -> 26.3; [notice] To update, run: pip install --upgrade pip; ============================= test session starts ==============================; platform linux -- Python 3.11.18, pytest-8.4.2, pluggy-1.7.0; rootdir: /workspace/services/api; configfile: pyproject.toml; plugins: anyio-4.16.0; collected 52 items; ; services/api/tests/test_api.py ...........................               [ 51%]; services/api/tests/test_db.py ......                                     [ 63%]; services/api/tests/test_telemetry.py ...................                 [100%]; ; ============================== 52 passed in 2.90s ==============================
+- Recorded UTC: 2026-11-05T19:43:23Z
+- Commit: `f826e4e11501402b489c72befb32830cc855531d` (`feat: persist API telemetry and alerts`) on `agent/task-api-persistence-migration`.
+- Files: `services/api/src/xreach_api/main.py`, `services/api/src/xreach_api/telemetry.py`, `services/api/tests/conftest.py`, `services/api/tests/test_api.py`, `services/api/tests/test_telemetry.py`, `services/api/README.md`.
+- Additional validation: Ruff checks passed with the pre-existing `B008` warning excluded; Python compileall and `git diff --check` passed. Database path is configurable with `XREACH_DATABASE_PATH` (default `/tmp/xreach.sqlite3`); use a persistent writable mount for container replacement retention.
+- PR/CI/deployment: not performed by worker under the decoupled publication policy. Planner/Integrator owns publication, exact-commit CI, and merge.
+- Remaining gate: publish branch and pass CI before task 30 proceeds.
+- Remote Branch: origin/agent/task-api-persistence-migration (HEAD f826e4e11501402b489c72befb32830cc855531d)
+- Pull Request: #3 (https://github.com/eeyung1/X-Reach/pull/3)
+- GitHub Actions CI Run: 42097715963
+- CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone Build, API Tests: 52 passed in Python 3.11, Radar Tests: 45 passed, Docker Build & Compose Stack E2E)
+- Integrated into main: commit via merge pull request #3 (e2e6aa1).
+- Reconciled session state: Codex-20261105-task28-20261105-613eb12b marked COMPLETE in state.json.
+- Downstream status: task-compose-persistence-e2e (Task 30) is now UNBLOCKED and ready for worker claim.

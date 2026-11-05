@@ -50,10 +50,18 @@
   3. **Execution Status**: Task 27 is unblocked and marked Unclaimed (Ready). Worker agents may claim immediately.
 - **2026-11-05**: Integrated Task 27 (`task-db-repository-schema`) into `main` following 100% pass on GitHub Actions CI run 42092015186. SQLite WAL database connection, schema migration runner, and typed repository CRUD verified across all 51 API tests. Pull request #1 merged into `main` (`d6a7153`). Downstream tasks 28 (`task-api-persistence-migration`) and 29 (`task-radar-persistence-export`) have disjoint scopes and are unblocked for parallel execution.
 - **2026-11-05**: Integrated Task 29 (`task-radar-persistence-export`) into `main` following 100% pass on GitHub Actions CI run 42094930406. SQLite archive baseline persistence, impression storage, and CLI/URL configuration verified across all 45 radar tests. Pull request #2 merged into `main` (`4978a67`). Task 28 is actively in progress under worker Codex.
+- **2026-11-05**: Integrated Task 28 (`task-api-persistence-migration`) into `main` following 100% pass on GitHub Actions CI run 42097715963. SQLite repository wiring across FastAPI telemetry and alert endpoints, plus database connectivity check on `GET /healthz`, verified across all 52 API tests. Pull request #3 merged into `main` (`e2e6aa1`). All upstream dependencies satisfied for Task 30 (`task-compose-persistence-e2e`); Task 30 is now UNBLOCKED and marked Unclaimed (Ready).
 
 
 
 ## Blockers and Proposed Decisions
+
+- **2026-11-05T19:53:00Z — task-api-persistence-migration CI verification & integration (RESOLVED)**:
+  - Worker commit `f826e4e` was pushed to `origin/agent/task-api-persistence-migration`. PR #3 opened.
+  - Remote GitHub Actions CI run `42097715963` passed 100% across all 6 test suites (Web Drop-Zone, Rust Core, Multimodal, API, Radar, and Docker Build & Compose Stack E2E).
+  - Merged into `main` via PR #3 (`e2e6aa1`).
+  - Worktree cleaned, branch deleted, session marked COMPLETE in state.json.
+  - Downstream Task 30 (`task-compose-persistence-e2e`) is now UNBLOCKED and ready for worker claim.
 
 - **2026-11-05T19:37:00Z — task-radar-persistence-export CI verification & integration (RESOLVED)**:
   - Worker commit `a21fb31` was pushed to `origin/agent/task-radar-persistence-export`. PR #2 opened.
