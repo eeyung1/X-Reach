@@ -34,8 +34,11 @@ from .models import (
     PercentileBounds,
     PlacementRequest,
     RadarIngestRequest,
+    OutcomeSnapshotRecord,
+    PublicationContextRecord,
     ScoreOutput,
 )
+from .telemetry import DraftTelemetryRequest, TelemetryStore
 from .multimodal import (
     MediaUpload,
     MultimodalBackend,
@@ -126,10 +129,43 @@ def create_app(
     ) or None
     app.state.alert_rules = []
     app.state.alert_webhooks = {}
+    app.state.telemetry = TelemetryStore()
 
     @app.get("/healthz")
     def health() -> dict[str, str]:
         return {"status": "ok", "scoring_engine": "rust-core"}
+
+    @app.post("/api/v1/telemetry/drafts", status_code=201)
+    def register_telemetry_draft(payload: DraftTelemetryRequest) -> dict[str, Any]:
+        try:
+            item = app.state.telemetry.register_draft(payload)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return item.model_dump(mode="json")
+
+    @app.post("/api/v1/telemetry/publications", status_code=201)
+    def attribute_publication(payload: PublicationContextRecord) -> dict[str, Any]:
+        try:
+            item = app.state.telemetry.publish(payload)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return item.model_dump(mode="json")
+
+    @app.post("/api/v1/telemetry/outcomes", status_code=201)
+    def record_telemetry_outcome(payload: OutcomeSnapshotRecord) -> dict[str, Any]:
+        try:
+            item = app.state.telemetry.record_outcome(payload)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        return item.model_dump(mode="json")
+
+    @app.get("/api/v1/telemetry/summary")
+    def telemetry_summary() -> dict[str, object]:
+        return app.state.telemetry.summary()
 
     @app.get("/api/v1/radar/stream")
     async def radar_stream(

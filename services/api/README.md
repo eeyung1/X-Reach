@@ -114,6 +114,17 @@ to a published post and validate that direct root replies target their
 conversation root. Outcome records represent one observation horizon per
 record; supported horizons are `5m`, `30m`, `2h`, `24h`, and `7d`.
 
+The closed-loop API accepts draft registration at `POST /api/v1/telemetry/drafts`
+with a `creator_id` and optional `baseline_24h_impressions`, publication links
+at `POST /api/v1/telemetry/publications`, and observed snapshots at
+`POST /api/v1/telemetry/outcomes`. The bridge accepts 24h and 7d outcomes and
+requires every outcome's `draft_id` and `published_tweet_id` to match its
+registered publication. `GET /api/v1/telemetry/summary` reports attributed
+posts, horizon coverage, and mean Creator Lift Delta. Lift is the mean percent
+difference between observed 24h impressions and the supplied creator baseline;
+posts without a positive baseline are excluded. This initial store is
+process-local, so it resets on restart and should run as a single API worker.
+
 ```json
 {
   "schema_version": "v1",

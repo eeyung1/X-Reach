@@ -3,6 +3,7 @@ from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
+from fastapi.testclient import TestClient
 
 from xreach_api.models import (
     AccountContextRecord,
@@ -10,6 +11,7 @@ from xreach_api.models import (
     OutcomeSnapshotRecord,
     PublicationContextRecord,
 )
+from xreach_api.main import create_app
 
 
 DRAFT_ID = UUID("97bb1fd8-3e1d-4d46-9c06-812f57f231d5")
@@ -125,3 +127,61 @@ def test_timestamp_fields_must_be_timezone_aware():
         AccountContextRecord(
             account_id="123", recorded_at=datetime(2026, 11, 4, 12, 0)
         )
+
+
+def test_closed_loop_attributes_post_records_horizons_and_reports_creator_lift():
+    client = TestClient(create_app())
+    draft = {
+        "creator_id": "creator-1",
+        "baseline_24h_impressions": 1000,
+        "draft": {"draft_id": str(DRAFT_ID), "text": "A draft"},
+    }
+    assert client.post("/api/v1/telemetry/drafts", json=draft).status_code == 201
+    publication = {
+        "draft_id": str(DRAFT_ID),
+        "published_tweet_id": "post-1",
+        "surface": "PROFILE_POST",
+        "published_at": OBSERVED_AT.isoformat(),
+    }
+    assert client.post("/api/v1/telemetry/publications", json=publication).status_code == 201
+
+    for horizon, impressions in (("24h", 1500), ("7d", 2400)):
+        outcome = {
+            "draft_id": str(DRAFT_ID),
+            "published_tweet_id": "post-1",
+            "horizon": horizon,
+            "observed_at": OBSERVED_AT.isoformat(),
+            "impressions": impressions,
+            "source": "manual",
+        }
+        assert client.post("/api/v1/telemetry/outcomes", json=outcome).status_code == 201
+
+    assert client.get("/api/v1/telemetry/summary").json() == {
+        "drafts": 1,
+        "published": 1,
+        "outcomes_24h": 1,
+        "outcomes_7d": 1,
+        "mean_creator_lift_delta_percent": 50.0,
+        "creator_lift_sample_size": 1,
+    }
+
+
+def test_closed_loop_rejects_unknown_drafts_and_mismatched_tweet_ids():
+    client = TestClient(create_app())
+    publication = {
+        "draft_id": str(DRAFT_ID),
+        "published_tweet_id": "post-1",
+        "surface": "PROFILE_POST",
+        "published_at": OBSERVED_AT.isoformat(),
+    }
+    assert client.post("/api/v1/telemetry/publications", json=publication).status_code == 404
+    client.post(
+        "/api/v1/telemetry/drafts",
+        json={"creator_id": "creator-1", "draft": {"draft_id": str(DRAFT_ID), "text": "A draft"}},
+    )
+    client.post("/api/v1/telemetry/publications", json=publication)
+    outcome = {
+        "draft_id": str(DRAFT_ID), "published_tweet_id": "wrong-id", "horizon": "24h",
+        "observed_at": OBSERVED_AT.isoformat(), "likes": 1,
+    }
+    assert client.post("/api/v1/telemetry/outcomes", json=outcome).status_code == 409
