@@ -40,6 +40,14 @@
 - **2026-11-04**: Integrated Task 24 (`task-data-contract-schemas`) into `main` following 100% pass on GitHub Actions CI run 41919884728. Versioned telemetry contract schemas (Pydantic v2) verified across all 43 API tests. Reconciled coordination state discrepancy (Codex session marked COMPLETE). Task 25 (`task-archive-ingest-engine`) actively executing under worker GPT56Sol.
 - **2026-11-04**: Integrated Task 25 (`task-archive-ingest-engine`) into `main` following 100% pass on GitHub Actions CI run 41922834670. First-party archive parser (`tweets.js` and CSV exports) and author baseline distributions verified across all 36 radar tests. Downstream task 26 (`task-closed-loop-telemetry`) unblocked and marked Unclaimed (Ready).
 - **2026-11-05**: Integrated Task 26 (`task-closed-loop-telemetry`) into `main` following 100% pass on GitHub Actions CI run 42082117507. Attribution bridge, multi-horizon outcome snapshots, creator lift calculation, and live dashboard telemetry verified across all 45 API tests and Next.js production build. **MILESTONE 7 (Commercial Data Moat & Telemetry Foundation) IS 100% COMPLETE.** All 4 backlog features (tasks 23-26) validated in remote CI and integrated into `main`.
+- **2026-11-05**: Human operator approved **Option 1: Production Persistence Engine & Resilient Storage** for **Milestone 8**.
+  1. **Database Engine**: Zero-dependency SQLite with Write-Ahead Logging (WAL) mode and connection pooling via `DATABASE_URL` abstraction (`sqlite:////data/xreach.db`).
+  2. **Task Decomposition**: 4 tasks planned:
+     - Task 27 (`task-db-repository-schema`): Core database repository layer, connection manager, idempotent schema migrations, and transactional CRUD in `services/api/src/xreach_api/db/`.
+     - Task 28 (`task-api-persistence-migration`): Migrate FastAPI endpoints from in-memory stores to DB repository, add DB healthcheck to `/healthz`.
+     - Task 29 (`task-radar-persistence-export`): Connect radar archive ingest engine and CLI to DB repository, write baselines and post impressions directly to DB (runs in parallel with Task 28).
+     - Task 30 (`task-compose-persistence-e2e`): Compose read-write `/data` volume configuration and E2E persistence verification across container restarts.
+  3. **Execution Status**: Task 27 is unblocked and marked Unclaimed (Ready). Worker agents may claim immediately.
 
 
 
