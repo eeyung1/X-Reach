@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .archive_ingest import ingest_archive
+from .archive_persistence import persist_archive_to_database
 from .cdp_client import ReaClient, ReaCommandError
 from .daemon import daemon_from_environment, run_daemon
 from .seed_scout import ScoutConfig, SeedScout
@@ -36,6 +37,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="summarize observed impressions from an X tweets.js or CSV export",
     )
     archive.add_argument("archive", type=Path)
+    archive.add_argument(
+        "--creator-id",
+        help="creator key for persisted baseline and historical observations",
+    )
+    archive.add_argument(
+        "--database-url",
+        help="SQLite DATABASE_URL; defaults to the DATABASE_URL environment variable",
+    )
 
     scout = subcommands.add_parser("scout", help="rank roots in a saved capture")
     scout.add_argument("capture", type=Path)
@@ -86,7 +95,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
         if arguments.command == "ingest-archive":
-            _print_json(asdict(ingest_archive(arguments.archive)))
+            report = ingest_archive(arguments.archive)
+            output = asdict(report)
+            database_url = arguments.database_url or os.environ.get("DATABASE_URL")
+            creator_id = arguments.creator_id or os.environ.get("XREACH_CREATOR_ID")
+            if database_url:
+                if not creator_id:
+                    raise ValueError(
+                        "--creator-id or XREACH_CREATOR_ID is required for database export"
+                    )
+                output["persistence"] = asdict(
+                    persist_archive_to_database(
+                        report,
+                        creator_id=creator_id,
+                        database_url=database_url,
+                    )
+                )
+            elif creator_id:
+                raise ValueError(
+                    "--database-url or DATABASE_URL is required with a creator ID"
+                )
+            _print_json(output)
             return 0
 
         if arguments.command == "daemon":

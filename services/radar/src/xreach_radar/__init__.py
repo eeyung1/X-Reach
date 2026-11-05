@@ -15,6 +15,12 @@ from .archive_ingest import (
     FormatBreakdown,
     ingest_archive,
 )
+from .archive_persistence import (
+    ArchivePersistenceResult,
+    database_path,
+    persist_archive_report,
+    persist_archive_to_database,
+)
 from .cdp_client import ReaClient, ReaCommandError
 from .daemon import (
     ApiEventSink,
@@ -44,6 +50,7 @@ __all__ = [
     "ApiEventSink",
     "ArchiveIngestReport",
     "ArchiveIngestor",
+    "ArchivePersistenceResult",
     "ArchivePost",
     "AuthorBaseline",
     "CaptureFileSource",
@@ -62,8 +69,11 @@ __all__ = [
     "ViralSeed",
     "WebhookDispatcher",
     "WebhookTarget",
+    "database_path",
     "ingest_archive",
     "iter_graphql_documents",
+    "persist_archive_report",
+    "persist_archive_to_database",
     "semantic_id",
     "shared_prefix_levels",
 ]
