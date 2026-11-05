@@ -24,7 +24,12 @@ scripts/e2e.sh
 Install Docker Compose v2 and `pytest` before using these scripts.
 
 The stack reads offline capture files from `./data/radar-capture.json` by
-default. Set `XREACH_DATA_DIR` to use another directory. Set
+default. The same directory is mounted read-write by the API for
+`xreach.sqlite3` and read-only by the radar worker. Set `XREACH_DATA_DIR` to use
+another directory, or set `XREACH_DATABASE_PATH` to choose the SQLite file
+within the API container. The database volume survives API container restarts.
+The Compose E2E suite checks this by restarting the API after recording telemetry.
+Set
 `XREACH_RADAR_INGEST_TOKEN` in the shell before running the E2E helper if you
 override the Compose default. The token is used only for the private
 daemon-to-API ingestion endpoint; do not expose the API port directly.
