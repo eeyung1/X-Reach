@@ -611,3 +611,28 @@ Append-only completed-work evidence.
 - CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone Build, API Tests: 51 passed in Python 3.11, Radar Tests, Docker Build & Compose Stack E2E)
 - Integrated into main: commit via merge pull request #1 (d6a7153).
 - Downstream status: task-api-persistence-migration (Task 28) and task-radar-persistence-export (Task 29) are unblocked and ready for concurrent worker claims.
+
+## task-radar-persistence-export — gpt56sol-task29-20261105-7c4e
+- Session: GPT56Sol-20261105-task29-7c4e-20261105-4591c4b4
+- State: COMPLETE
+- Validation: /tmp/opencode/xreach-task23-venv/bin/pytest services/radar/tests/
+- Evidence: ============================= test session starts ==============================; platform linux -- Python 3.14.4, pytest-8.4.2, pluggy-1.7.0; rootdir: /home/eeyung/Projects/X-Reach/.agent-worktrees/task-radar-persistence-export/services/radar; configfile: pyproject.toml; plugins: anyio-4.16.0; collected 45 items; ; services/radar/tests/test_alerts.py ......                               [ 13%]; services/radar/tests/test_archive_ingest.py ......                       [ 26%]; services/radar/tests/test_archive_persistence.py .........               [ 46%]; services/radar/tests/test_cdp_client.py .....                            [ 57%]; services/radar/tests/test_daemon.py ....                                 [ 66%]; services/radar/tests/test_graphql_sniffer.py ....                        [ 75%]; services/radar/tests/test_seed_scout.py .....                            [ 86%]; services/radar/tests/test_simclusters.py ......                          [100%]; ; ============================== 45 passed in 0.16s ==============================
+- Recorded UTC: 2026-11-05T19:30:06Z
+
+
+### task-radar-persistence-export handoff evidence — 2026-11-05T19:30:36Z
+- Feature/session: `task-radar-persistence-export` / `GPT56Sol-20261105-task29-7c4e-20261105-4591c4b4`.
+- Claim: `gpt56sol-task29-20261105-7c4e` for `services/radar/src/xreach_radar/` and `services/radar/tests/`; claim released by coordinator completion.
+- Branch/worktree: `agent/task-radar-persistence-export` at `/home/eeyung/Projects/X-Reach/.agent-worktrees/task-radar-persistence-export`.
+- Commit: `a21fb311054652f41e5b1c1acdb87a1069982591` (`feat: persist radar archive observations`).
+- Files: `services/radar/src/xreach_radar/archive_persistence.py`, `services/radar/src/xreach_radar/cli.py`, `services/radar/src/xreach_radar/__init__.py`, and `services/radar/tests/test_archive_persistence.py`.
+- Implementation: added atomic, idempotent persistence of computed creator baselines and per-post archive impressions through the shared API database repository/transaction manager; added SQLite `DATABASE_URL` handling and CLI/env configuration with explicit creator identity.
+- Validation passed: coordinator acceptance command `/tmp/opencode/xreach-task23-venv/bin/pytest services/radar/tests/` (45 passed); targeted Ruff lint and format checks; Python compileall; `git diff --check`; actual integration smoke against `xreach_api.db.Database` and `Repository` persisted and read back one baseline and historical post.
+- PR/CI/deployment: not performed by worker under the decoupled publication policy. Planner/Integrator owns publication, exact-commit CI, merge, and downstream unblocking.
+- Remaining gates: publish branch and pass CI; reconcile structured `state.json` worker state (`ACTIVE`) with the authoritative completion evidence/Markdown `COMPLETE`; Task 30 remains blocked until both Tasks 28 and 29 are integrated.
+- Remote Branch: origin/agent/task-radar-persistence-export (HEAD a21fb311054652f41e5b1c1acdb87a1069982591)
+- Pull Request: #2 (https://github.com/eeyung1/X-Reach/pull/2)
+- GitHub Actions CI Run: 42094930406
+- CI Conclusion: SUCCESS (Rust Core, Multimodal Extractor, Web Drop-Zone Build, API Tests, Radar Tests: 45 passed, Docker Build & Compose Stack E2E)
+- Integrated into main: commit via merge pull request #2 (4978a67).
+- Reconciled session state: GPT56Sol-20261105-task29-7c4e-20261105-4591c4b4 marked COMPLETE in state.json. Task 28 is actively in progress under worker Codex; Task 30 remains blocked on Task 28.
