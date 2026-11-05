@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from xreach_api.calibration import ScoreCalibrationConfig
+from xreach_api.db import Database
 from xreach_api.main import create_app
 from xreach_api.multimodal import MediaUpload, MultimodalService
 from xreach_api.radar_stream import RadarEventBuffer, RadarSeedProducer
@@ -143,6 +144,17 @@ def test_health_reports_api_status_without_building_rust_binary():
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "scoring_engine": "rust-core"}
+
+
+def test_health_fails_when_database_connection_is_unavailable():
+    database = Database(":memory:")
+    app = create_app(database=database)
+    database.close()
+
+    response = TestClient(app).get("/healthz")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "database is unavailable"
 
 
 def test_analyze_validates_prediction_heads_and_returns_uncalibrated_score():
@@ -591,6 +603,13 @@ def test_alert_configuration_requires_admin_and_never_returns_webhook_secret():
     }
     assert "never-return-this-secret" not in readback.text
     assert "secret-path" not in readback.text
+
+    restarted = client_with(FakeRustScorer(), alert_admin_token="admin-secret")
+    persisted = restarted.get(
+        "/api/v1/alerts", headers={"X-Alert-Admin-Token": "admin-secret"}
+    )
+    assert persisted.status_code == 200
+    assert persisted.json() == configured.json()
 
 
 def test_alert_configuration_rejects_duplicate_ids_and_unsafe_url():

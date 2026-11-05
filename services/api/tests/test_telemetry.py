@@ -1,21 +1,20 @@
-from datetime import datetime, timezone
+import os
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
-from pydantic import ValidationError
 from fastapi.testclient import TestClient
-
+from pydantic import ValidationError
+from xreach_api.main import create_app
 from xreach_api.models import (
     AccountContextRecord,
     DraftInputRecord,
     OutcomeSnapshotRecord,
     PublicationContextRecord,
 )
-from xreach_api.main import create_app
-
 
 DRAFT_ID = UUID("97bb1fd8-3e1d-4d46-9c06-812f57f231d5")
-OBSERVED_AT = datetime(2026, 11, 4, 12, 0, tzinfo=timezone.utc)
+OBSERVED_AT = datetime(2026, 11, 4, 12, 0, tzinfo=UTC)
 
 
 def test_draft_record_is_versioned_and_accepts_text_or_media():
@@ -124,9 +123,7 @@ def test_outcome_snapshot_requires_metrics_and_nonnegative_counters():
 
 def test_timestamp_fields_must_be_timezone_aware():
     with pytest.raises(ValidationError):
-        AccountContextRecord(
-            account_id="123", recorded_at=datetime(2026, 11, 4, 12, 0)
-        )
+        AccountContextRecord(account_id="123", recorded_at=datetime(2026, 11, 4, 12, 0))
 
 
 def test_closed_loop_attributes_post_records_horizons_and_reports_creator_lift():
@@ -143,7 +140,10 @@ def test_closed_loop_attributes_post_records_horizons_and_reports_creator_lift()
         "surface": "PROFILE_POST",
         "published_at": OBSERVED_AT.isoformat(),
     }
-    assert client.post("/api/v1/telemetry/publications", json=publication).status_code == 201
+    assert (
+        client.post("/api/v1/telemetry/publications", json=publication).status_code
+        == 201
+    )
 
     for horizon, impressions in (("24h", 1500), ("7d", 2400)):
         outcome = {
@@ -154,7 +154,9 @@ def test_closed_loop_attributes_post_records_horizons_and_reports_creator_lift()
             "impressions": impressions,
             "source": "manual",
         }
-        assert client.post("/api/v1/telemetry/outcomes", json=outcome).status_code == 201
+        assert (
+            client.post("/api/v1/telemetry/outcomes", json=outcome).status_code == 201
+        )
 
     assert client.get("/api/v1/telemetry/summary").json() == {
         "drafts": 1,
@@ -165,6 +167,12 @@ def test_closed_loop_attributes_post_records_horizons_and_reports_creator_lift()
         "creator_lift_sample_size": 1,
     }
 
+    restarted = TestClient(create_app(database_path=os.environ["XREACH_DATABASE_PATH"]))
+    assert (
+        restarted.get("/api/v1/telemetry/summary").json()
+        == client.get("/api/v1/telemetry/summary").json()
+    )
+
 
 def test_closed_loop_rejects_unknown_drafts_and_mismatched_tweet_ids():
     client = TestClient(create_app())
@@ -174,14 +182,23 @@ def test_closed_loop_rejects_unknown_drafts_and_mismatched_tweet_ids():
         "surface": "PROFILE_POST",
         "published_at": OBSERVED_AT.isoformat(),
     }
-    assert client.post("/api/v1/telemetry/publications", json=publication).status_code == 404
+    assert (
+        client.post("/api/v1/telemetry/publications", json=publication).status_code
+        == 404
+    )
     client.post(
         "/api/v1/telemetry/drafts",
-        json={"creator_id": "creator-1", "draft": {"draft_id": str(DRAFT_ID), "text": "A draft"}},
+        json={
+            "creator_id": "creator-1",
+            "draft": {"draft_id": str(DRAFT_ID), "text": "A draft"},
+        },
     )
     client.post("/api/v1/telemetry/publications", json=publication)
     outcome = {
-        "draft_id": str(DRAFT_ID), "published_tweet_id": "wrong-id", "horizon": "24h",
-        "observed_at": OBSERVED_AT.isoformat(), "likes": 1,
+        "draft_id": str(DRAFT_ID),
+        "published_tweet_id": "wrong-id",
+        "horizon": "24h",
+        "observed_at": OBSERVED_AT.isoformat(),
+        "likes": 1,
     }
     assert client.post("/api/v1/telemetry/outcomes", json=outcome).status_code == 409
